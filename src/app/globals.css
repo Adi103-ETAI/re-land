@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+/* ── Sarvam-inspired Design Tokens — applied to LANDLENS ── */
+:root {
+  /* Sarvam core */
+  --saffron-600: #F87613;
+  --saffron-500: #F08634;
+  --saffron-300: #FDDABE;
+  --ink-900: #1F1F1F;
+  --ink-800: #2A2C33;
+  --gray-600: #717171;
+  --gray-500: #6B6B6B;
+  --surface-page: #FCFCFC;
+  --surface-card: #FFFFFF;
+  --surface-raised: #F5F5F5;
+  --surface-tab: #F0F0F0;
+  --border-hairline: #ECECEC;
+  --indigo-600: #3333CC;
+  --indigo-500: #4250D5;
+  --peri-300: #C5D3FB;
+  --peri-200: #DCE5FE;
+  --peri-100: #E8EFFC;
+  --peach-100: #FEEDE6;
+
+  /* LANDLENS semantic aliases (earthy brand preserved via saffron + ink) */
+  --navy: var(--ink-800);       /* was #4A2E1F */
+  --blue: #3C415B;              /* was #7A4A2E — now desaturated for Sarvam dark panel */
+  --teal: var(--saffron-600);   /* was #B4784A — now saffron primary */
+  --bg: var(--surface-page);
+  --card: var(--surface-card);
+  --ink: var(--ink-900);
+  --sub: var(--gray-600);
+  --line: var(--border-hairline);
+  --success: #496D21;
+  --success-bg: #F0F7EC;
+  --warning: #B5651D;
+  --warning-bg: #FFF3EA;
+  --error: #A13A2C;
+  --error-bg: #FDF3F0;
+  --radius: 16px;
+  --radius-pill: 999px;
+  --shadow: 0 1px 3px rgba(20,20,40,0.06), 0 8px 24px rgba(20,20,40,0.05);
+  --shadow-dark: 0 12px 40px rgba(26,26,41,0.18);
+  --font-serif: 'Source Serif 4', Georgia, serif;
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+  --content-width: 1160px;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--ink);
+}
+
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: inherit; text-decoration: none; }
+button { font-family: var(--font-sans); cursor: pointer; }
+.mono { font-family: var(--font-mono); }
+::selection { background: var(--saffron-300); color: var(--ink-900); }
+:focus-visible { outline: 2px solid var(--indigo-500); outline-offset: 2px; }
+
+/* — Sarvam pill button system — */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px; padding: 0 24px; border-radius: var(--radius-pill);
+  font-size: 14px; font-weight: 500; line-height: 1;
+  transition: all 150ms ease; border: 1px solid transparent; white-space: nowrap;
+}
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--ink-800); color: #fff; }
+.btn-primary:hover { background: #3a3d4a; }
+.btn-teal { background: var(--saffron-600); color: #fff; }
+.btn-teal:hover { background: #e0650a; box-shadow: 0 4px 16px rgba(248,118,19,0.3); }
+.btn-ghost { background: transparent; color: var(--ink-800); border-color: var(--border-hairline); }
+.btn-ghost:hover { border-color: var(--ink-800); background: var(--surface-raised); }
+.btn-sm { height: 36px; padding: 0 16px; font-size: 13px; }
+
+/* Card primitives — Sarvam hairline */
+.card {
+  background: var(--card); border: 1px solid var(--border-hairline);
+  border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow);
+}
+
+/* Utility */
+.eyebrow {
+  font-size: 11px; font-weight: 500; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--gray-500);
+}
+.demo-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700; color: var(--warning);
+  background: var(--warning-bg); border-radius: 999px; padding: 6px 12px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: var(--border-hairline); border-radius: 99px; }

@@ -1,0 +1,20 @@
+# Light (laptop-friendly) — no torch/transformers needed for VLM-API mode
+fastapi>=0.115
+uvicorn[standard]>=0.34
+pydantic>=2.11
+python-multipart>=0.0.9
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+pillow>=11
+opencv-python>=4.11
+pytesseract>=0.3.13
+numpy>=1.26
+python-dotenv>=1.0
+boto3>=1.35
+redis>=5.2
+celery>=5.4
+httpx>=0.27
+# Heavy (only if you run local models, not needed when using VLM_API)
+# paddleocr>=2.9
+# transformers>=4.48
+# torch>=2.5  # ~2GB, GPU only — use VLM_API instead on laptop
