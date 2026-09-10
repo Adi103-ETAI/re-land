@@ -78,9 +78,9 @@ export default function Extraction() {
           )}
           {/* Only show bboxes where Gemini returned coordinates — missing fields (khasra/mutation when —) have no box */}
           {visibleBboxes.map(f => {
-            const b = f.bbox as any;
+            const b = f.bbox as unknown as Record<string, number>;
             // Support both {ymin,xmin,ymax,xmax} normalized and legacy {x,y,w,h}
-            let style: any = {};
+            let style: React.CSSProperties = {};
             if (b.ymin !== undefined) {
               style = { top: `${b.ymin*100}%`, left: `${b.xmin*100}%`, width: `${(b.xmax-b.xmin)*100}%`, height: `${(b.ymax-b.ymin)*100}%` };
             } else if (b.x !== undefined) {
@@ -98,7 +98,7 @@ export default function Extraction() {
           {dynamicFields.map(f => {
             const confColor = f.conf >= 93 ? "var(--success)" : f.conf >= 80 ? "var(--warning)" : "var(--error)";
             const barCls = f.conf >= 93 ? "bg-[#496D21]" : f.conf >= 80 ? "bg-[#B5651D]" : "bg-[#A13A2C]";
-            const hasBox = !!(f as any).bbox;
+            const hasBox = !!(f.bbox);
             return (
               <div key={f.key} onMouseEnter={() => setHl(f.key)} onMouseLeave={() => setHl(null)} className={`border rounded-xl p-3 cursor-pointer transition ${hl === f.key ? "border-[var(--saffron-600)]" : "border-[var(--border-hairline)]"} ${!hasBox && f.value==="—" ? "opacity-60" : ""}`}>
                 <div className="flex justify-between items-baseline"><span className="text-[11px] font-bold text-[var(--gray-500)]">{f.label} {!hasBox && f.value==="—" && <span className="font-normal">· not on paper</span>}</span><span className="font-mono text-xs font-bold" style={{ color: confColor }}>{f.conf}% <span className="text-[10px] font-normal text-[var(--gray-500)]">{f.source !== "mock" ? `· ${f.source}${hasBox ? " · located" : " · no box"}` : ""}</span></span></div>

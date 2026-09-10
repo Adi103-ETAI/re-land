@@ -3,7 +3,8 @@ import { create } from "zustand";
 import type { CaseRecord, UploadedFile } from "@/lib/types";
 import { caseRecords } from "@/data/cases";
 
-type Field = { key: string; value: string; confidence: number; bbox?: any; source?: string };
+type BBox = { ymin: number; xmin: number; ymax: number; xmax: number } | { x: number; y: number; w: number; h: number } | null;
+type Field = { key: string; value: string; confidence: number; bbox?: BBox; source?: string };
 
 type CaseStore = {
   currentCase: CaseRecord;

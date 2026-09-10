@@ -20,13 +20,12 @@ export default function Processing() {
   const { currentCase, uploadedFile, jobId, setCase, setFields } = useCaseStore();
   const [pct, setPct] = useState(0);
   const [msg, setMsg] = useState(msgs.queued);
-  const [mode, setMode] = useState<"backend"|"fallback">("backend");
+  const initialMode = typeof window !== "undefined" && (jobId || sessionStorage.getItem("landlens_jobId")) ? "backend" as const : "fallback" as const;
+  const [mode] = useState<"backend"|"fallback">(initialMode);
 
   useEffect(() => {
     const id = jobId || (typeof window !== "undefined" ? sessionStorage.getItem("landlens_jobId") : null);
     if (!id) {
-      // No backend job — fallback fake progress (sample mode)
-      setMode("fallback");
       let p = 0;
       const t = setInterval(() => {
         p += Math.random() * 9 + 5;
@@ -35,7 +34,6 @@ export default function Processing() {
       }, 420);
       return () => clearInterval(t);
     }
-    setMode("backend");
     let cancelled = false;
     const poll = async () => {
       try {

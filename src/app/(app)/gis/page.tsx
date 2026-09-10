@@ -13,6 +13,8 @@ export default function GisPage() {
   const [qSurvey, setQSurvey] = useState("");
   const [qOwner, setQOwner] = useState("");
   const [qVillage, setQVillage] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2500); };
 
   useEffect(() => {
     if (mapInit.current || !mapRef.current) return;
@@ -35,15 +37,32 @@ export default function GisPage() {
     }
   }, []);
 
+  const filtered = parcels.filter(p =>
+    (!qSurvey || p.survey.toLowerCase().includes(qSurvey.toLowerCase())) &&
+    (!qOwner || p.owner.toLowerCase().includes(qOwner.toLowerCase())) &&
+    (!qVillage || currentCase.village.toLowerCase().includes(qVillage.toLowerCase()))
+  );
+
   return (
     <div>
-      <div className="mb-5"><h2 className="font-[var(--font-serif)] text-2xl font-semibold">GIS / land map</h2><p className="text-sm text-[var(--gray-600)]">Illustrative parcel data for the prototype.</p></div>
+      <div className="mb-5"><h2 className="font-[var(--font-serif)] text-2xl font-semibold">GIS / land map</h2><p className="text-sm text-[var(--gray-600)]">Illustrative parcel data — search filters markers instantly.</p></div>
       <Tracker activeIdx={6} />
       <div className="grid md:grid-cols-3 gap-2 mb-3">
-        <input value={qSurvey} onChange={e => setQSurvey(e.target.value)} placeholder="Search by survey number…" className="px-3 py-2.5 border border-[var(--border-hairline)] rounded-xl text-sm bg-white" />
-        <input value={qOwner} onChange={e => setQOwner(e.target.value)} placeholder="Search by owner name…" className="px-3 py-2.5 border border-[var(--border-hairline)] rounded-xl text-sm bg-white" />
-        <input value={qVillage} onChange={e => setQVillage(e.target.value)} placeholder="Search by village…" className="px-3 py-2.5 border border-[var(--border-hairline)] rounded-xl text-sm bg-white" />
+        <input value={qSurvey} onChange={e => setQSurvey(e.target.value)} placeholder="Search by survey number…" className="px-3 py-2.5 border border-[var(--border-hairline)] rounded-xl text-sm bg-white focus:border-[var(--saffron-600)] outline-none" />
+        <input value={qOwner} onChange={e => setQOwner(e.target.value)} placeholder="Search by owner name…" className="px-3 py-2.5 border border-[var(--border-hairline)] rounded-xl text-sm bg-white focus:border-[var(--saffron-600)] outline-none" />
+        <div className="flex gap-2">
+          <input value={qVillage} onChange={e => setQVillage(e.target.value)} placeholder="Search by village…" className="flex-1 px-3 py-2.5 border border-[var(--border-hairline)] rounded-xl text-sm bg-white focus:border-[var(--saffron-600)] outline-none" />
+          {(qSurvey || qOwner || qVillage) && <button onClick={()=>{setQSurvey(""); setQOwner(""); setQVillage(""); showToast("Filters cleared");}} className="btn btn-ghost btn-sm">Clear</button>}
+        </div>
       </div>
+      {filtered.length !== parcels.length && <div className="text-xs text-[var(--gray-600)] mb-2">{filtered.length} parcel(s) match — click a marker or result below.</div>}
+      {filtered.length > 0 && filtered.length < 4 && (
+        <div className="flex gap-2 mb-3 flex-wrap">
+          {filtered.map(p => (
+            <button key={p.survey} onClick={()=>{setSelected(p); showToast(`Selected ${p.survey} — ${p.owner}`);}} className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${selected.survey===p.survey ? "bg-[var(--ink-800)] text-white" : "bg-white border-[var(--border-hairline)]"}`}>{p.survey} · {p.owner}</button>
+          ))}
+        </div>
+      )}
       <div className="flex gap-4 mb-3 text-xs text-[var(--gray-600)] flex-wrap">
         <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#496D21]" />Verified</span>
         <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#B5651D]" />Pending</span>
@@ -58,8 +77,10 @@ export default function GisPage() {
           <div className="flex justify-between py-2 border-b border-dashed border-[var(--border-hairline)] text-sm"><span className="text-[var(--gray-600)]">Current case</span><b className="font-mono">{currentCase.survey} · {currentCase.owner}</b></div>
           <div className="flex justify-between py-2 text-sm"><span className="text-[var(--gray-600)]">Area</span><b className="font-mono">{selected.area}</b></div>
           <div className="text-xs text-[var(--gray-600)] mt-3">Historical (1962 register): 2.45 Ha. Current (GIS cadastral): 2.40 Ha.</div>
+          <button onClick={()=>showToast(`Opening ${selected.survey} in full GIS — coming soon`)} className="btn btn-ghost btn-sm w-full mt-3">Open in full GIS</button>
         </div>
       </div>
+      {toast && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[var(--ink-800)] text-white px-4 py-2 rounded-full text-sm shadow-lg z-50">{toast}</div>}
     </div>
   );
 }
