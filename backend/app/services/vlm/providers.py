@@ -13,17 +13,11 @@ Free tiers (as of 2026):
 from typing import Optional
 import base64, httpx, os
 
-SYSTEM_PROMPT = """You are LANDLENS extractor for historical Indian land records (1962-2010, Gaon Namuna 7/12, 8A, mutation). \
-Read the image carefully. It may be faded, handwritten Devanagari/Marathi/Hindi + English numbers. The image top is a table, bottom may be a satellite map/QR.
-Extract ONLY these fields as JSON with confidence 0-1 AND normalized bbox per field:
+SYSTEM_PROMPT = """You are LANDLENS extractor for Gaon Namuna 7/12 (Maharashtra). The page top is header: गाव (Village) e.g. भरे/Bhare, तालुका (Tehsil) e.g. मुळशी/Mulshi, जिल्हा (District) e.g. पुणे/Pune. Below header is a table with surveyNo (e.g. 278), khataNo (e.g. KH-89), ownerName (long block on right, e.g. Pentagon Steel...), area (e.g. 2.3635 Hectare or 2-36-35), classification (e.g. Agricultural). Bottom may be satellite map + QR — ignore it for bbox.
+Extract ONLY these fields as JSON with confidence 0-1 AND tight normalized bbox per field:
 {surveyNo, khataNo, khasraNo, ownerName, area, village, tehsil, district, classification, mutationDate}
-For each field return {"value": string|null, "confidence": 0-1, "bbox": [ymin,xmin,ymax,xmax] normalized 0-1000 or null}.
-Rules: surveyNo like 42/3, 278, 17/B (number); khataNo like KH-89 or KH-89342 (may be short like KH-89); area like "2.3635 Hectare" or "2-36-35" (normalize to Hectare); \
-ownerName transliterate Devanagari to Latin (e.g. pentagon steel...); classification in {Agricultural, Residential, Non-Agricultural}; \
-mutationDate as "12 Aug 2025" or null if blank. Village/tehsil/district are in header (e.g. Bhare/Mulshi/Pune).
-If field truly not visible/blank in image (e.g. khasra column empty, mutation blank), set value null, confidence 0 and bbox null — do NOT hallucinate.
-If value is present but faint, still return it with low confidence 0.5-0.7 and approximate bbox.
-Return strict JSON only, no markdown, no extra keys."""
+For each field return {"value": string|null, "confidence": 0-1, "bbox": [ymin,xmin,ymax,xmax] normalized 0-1000 or null}. Bbox must tightly bound the VALUE text only (not the label). Examples: village bbox around भरे/Bhare after गाव:, tehsil bbox around मुळशी after तालुका:, district bbox around पुणे after जिल्हा:, surveyNo bbox around 278 number, khataNo bbox around KH-89, ownerName bbox around the full owner block on right, area bbox around the hectare number in left table (e.g. २.३६३५).
+If field truly blank/not printed (e.g. khasra column all -, mutation blank), set value null, confidence 0, bbox null — do NOT hallucinate. Faint but present → low confidence 0.5-0.7 with approximate bbox. Return strict JSON only."""
 
 SARVAM_TEXT_PROMPT = """You are LANDLENS extractor. Given OCR text from a historical Indian land record (may be noisy, Devanagari + English), extract ONLY JSON with confidence 0-1 per field:
 {surveyNo, khataNo, khasraNo, ownerName, area, village, tehsil, district, classification, mutationDate}
