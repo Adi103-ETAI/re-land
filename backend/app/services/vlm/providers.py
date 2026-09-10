@@ -13,13 +13,17 @@ Free tiers (as of 2026):
 from typing import Optional
 import base64, httpx, os
 
-SYSTEM_PROMPT = """You are LANDLENS extractor for historical Indian land records (1962-2010). \
-Read the image carefully. It may be faded, handwritten Devanagari/Marathi/Hindi + English numbers. \
-Extract ONLY these fields as JSON with confidence 0-1 per field:
+SYSTEM_PROMPT = """You are LANDLENS extractor for historical Indian land records (1962-2010, Gaon Namuna 7/12, 8A, mutation). \
+Read the image carefully. It may be faded, handwritten Devanagari/Marathi/Hindi + English numbers. The image top is a table, bottom may be a satellite map/QR.
+Extract ONLY these fields as JSON with confidence 0-1 AND normalized bbox per field:
 {surveyNo, khataNo, khasraNo, ownerName, area, village, tehsil, district, classification, mutationDate}
-Rules: surveyNo like 42/3 or 17/B; khataNo like KH-89342; area like "2.45 Hectare" normalized to Hectare; \
-ownerName transliterate Devanagari to Latin; classification in {Agricultural, Residential, Non-Agricultural}; \
-mutationDate as "12 Aug 2025". If field not found, set value null and confidence 0. Return strict JSON only, no markdown."""
+For each field return {"value": string|null, "confidence": 0-1, "bbox": [ymin,xmin,ymax,xmax] normalized 0-1000 or null}.
+Rules: surveyNo like 42/3, 278, 17/B (number); khataNo like KH-89 or KH-89342 (may be short like KH-89); area like "2.3635 Hectare" or "2-36-35" (normalize to Hectare); \
+ownerName transliterate Devanagari to Latin (e.g. pentagon steel...); classification in {Agricultural, Residential, Non-Agricultural}; \
+mutationDate as "12 Aug 2025" or null if blank. Village/tehsil/district are in header (e.g. Bhare/Mulshi/Pune).
+If field truly not visible/blank in image (e.g. khasra column empty, mutation blank), set value null, confidence 0 and bbox null — do NOT hallucinate.
+If value is present but faint, still return it with low confidence 0.5-0.7 and approximate bbox.
+Return strict JSON only, no markdown, no extra keys."""
 
 SARVAM_TEXT_PROMPT = """You are LANDLENS extractor. Given OCR text from a historical Indian land record (may be noisy, Devanagari + English), extract ONLY JSON with confidence 0-1 per field:
 {surveyNo, khataNo, khasraNo, ownerName, area, village, tehsil, district, classification, mutationDate}

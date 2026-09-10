@@ -61,14 +61,35 @@ def _to_record(recId: str, docLabel: str, gem: dict, lang: str):
     has_mismatch = abs(rec["area"] - rec["areaDb"]) > 0.001
     score = max(70, round(100 - (6 if has_mismatch else 0) - (2 if (c9 or 0) < 0.7 else 0)))
     rec["validationScore"] = score
-    # Fields with confidence for extraction UI
+    # Fields with confidence + normalized bbox for extraction UI
+    def parse_bbox(raw):
+        if not raw or not isinstance(raw, (list, tuple)) or len(raw) != 4:
+            return None
+        try:
+            ymin, xmin, ymax, xmax = [float(x) for x in raw]
+            # Gemini returns 0-1000 normalized
+            if max(ymin, xmin, ymax, xmax) <= 1000:
+                return {"ymin": ymin/1000, "xmin": xmin/1000, "ymax": ymax/1000, "xmax": xmax/1000}
+            return {"ymin": ymin, "xmin": xmin, "ymax": ymax, "xmax": xmax}
+        except: return None
+
     fields = []
     for gk, rk in FIELD_MAP.items():
-        v, c = val(gk)
-        # approximate bbox for hover (evenly spaced, matches extraction page)
-        idx = list(FIELD_MAP.keys()).index(gk)
-        bbox = {"x": 20 + (idx % 2)*180, "y": 60 + idx*45, "w": 140, "h": 24}
-        fields.append({"key": rk, "value": str(v) if v else "—", "confidence": float(c or 0), "bbox": bbox, "source": "gemini" if c else "fallback"})
+        raw = gem.get(gk)
+        if isinstance(raw, dict):
+            v = raw.get("value")
+            c = raw.get("confidence", 0.0)
+            bbox_raw = raw.get("bbox") or raw.get("box")
+        else:
+            v, c, bbox_raw = raw, 0.9 if raw else 0, None
+        # Hide bbox if not found / confidence 0 / null value
+        show = v is not None and str(v).strip() not in ("", "—", "-", "null") and float(c or 0) > 0
+        bbox = parse_bbox(bbox_raw) if show else None
+        # Fallback: if Gemini didn't return bbox but has value, don't show dummy — leave null so frontend hides marking
+        if show and not bbox:
+            bbox = None
+        val_str = str(v) if v is not None and str(v).strip() not in ("", "null") else "—"
+        fields.append({"key": rk, "value": val_str, "confidence": float(c or 0), "bbox": bbox, "source": "gemini" if c and c>0 else "fallback"})
     return rec, fields, score
 
 async def run_pipeline(job_id: str, file_path: str, lang: str = "Marathi"):
