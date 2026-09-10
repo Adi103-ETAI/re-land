@@ -8,7 +8,7 @@ import { runOcr, ocrToCase, generateFromFileMeta } from "@/lib/ocr";
 
 export default function UploadPage() {
   const router = useRouter();
-  const { setCase, uploadedFile, setUploadedFile, pickedSample, setPickedSample, setOcrResult } = useCaseStore();
+  const { setCase, uploadedFile, setUploadedFile, pickedSample, setPickedSample, setOcrResult, setJobId, setFields } = useCaseStore();
   const [lang, setLang] = useState("Marathi");
   const [drag, setDrag] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -48,11 +48,9 @@ export default function UploadPage() {
         const res = await fetch("/api/upload", { method: "POST", body: fd });
         if (res.ok) {
           const job = await res.json();
-          // Store jobId for processing page to poll
+          setJobId(job.jobId);
+          setFields(null);
           sessionStorage.setItem("landlens_jobId", job.jobId);
-          // Optimistic: still set a case so UI doesn't blank
-          const fileObj = inputRef.current.files[0];
-          setCase(generateFromFileMeta(fileObj, null));
           router.push("/processing");
           return;
         }

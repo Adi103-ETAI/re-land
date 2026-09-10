@@ -5,37 +5,88 @@ import Tracker from "@/components/workflow/Tracker";
 import { useCaseStore } from "@/store/case-store";
 
 const steps = ["Document uploaded","Image enhancement","Language detection","Layout detection","OCR processing","Handwriting recognition","Information extraction","Validation","Duplicate detection"];
-const msgs = ["Preparing document…","Enhancing scan quality…","Detecting document language…","Mapping document layout…","Running OCR across the page…","Reading handwritten entries…","AI is identifying land record entities…","Cross-checking against LRMS records…","Scanning for duplicate records…","Finalizing…"];
+const msgs: Record<string,string> = {
+  queued: "Preparing document…",
+  preprocess: "Enhancing scan quality…",
+  ocr: "Running OCR across the page…",
+  extracting: "AI is identifying land record entities…",
+  validating: "Cross-checking against LRMS records…",
+  done: "AI digitization complete.",
+  failed: "Extraction failed — using fallback.",
+};
 
 export default function Processing() {
   const router = useRouter();
-  const { currentCase, uploadedFile } = useCaseStore();
+  const { currentCase, uploadedFile, jobId, setCase, setFields } = useCaseStore();
   const [pct, setPct] = useState(0);
-  const [msg, setMsg] = useState(msgs[0]);
+  const [msg, setMsg] = useState(msgs.queued);
+  const [mode, setMode] = useState<"backend"|"fallback">("backend");
 
   useEffect(() => {
-    let p = 0;
-    const t = setInterval(() => {
-      p += Math.random() * 9 + 5;
-      if (p >= 100) {
-        p = 100; clearInterval(t);
-        setPct(100); setMsg("AI digitization complete.");
-        setTimeout(() => router.push("/extraction"), 700);
-      } else {
-        setPct(p);
-        const idx = Math.min(steps.length - 1, Math.floor((p / 100) * steps.length));
-        setMsg(msgs[idx]);
+    const id = jobId || (typeof window !== "undefined" ? sessionStorage.getItem("landlens_jobId") : null);
+    if (!id) {
+      // No backend job — fallback fake progress (sample mode)
+      setMode("fallback");
+      let p = 0;
+      const t = setInterval(() => {
+        p += Math.random() * 9 + 5;
+        if (p >= 100) { p = 100; clearInterval(t); setPct(100); setMsg(msgs.done); setTimeout(() => router.push("/extraction"), 700); }
+        else { setPct(p); const idx = Math.min(steps.length-1, Math.floor((p/100)*steps.length)); setMsg(["Preparing document…","Enhancing scan quality…","Detecting document language…","Mapping document layout…","Running OCR…","Reading handwritten entries…","AI is identifying entities…","Cross-checking…","Scanning duplicates…"][idx]); }
+      }, 420);
+      return () => clearInterval(t);
+    }
+    setMode("backend");
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const r = await fetch(`/api/jobs/${id}`);
+        if (!r.ok) throw new Error("job not found");
+        const j = await r.json();
+        if (cancelled) return;
+        setPct(j.progress || 0);
+        setMsg(msgs[j.status] || j.status);
+        if (j.status === "done" && j.record) {
+          // Update store with real Gemini extraction — replaces constants
+          setCase({
+            recId: j.record.recId,
+            owner: j.record.owner,
+            survey: j.record.survey,
+            khata: j.record.khata,
+            village: j.record.village,
+            tehsil: j.record.tehsil,
+            district: j.record.district,
+            area: j.record.area,
+            areaDb: j.record.areaDb,
+            classification: j.record.classification,
+            mutationDate: j.record.mutationDate,
+            dupSim: j.record.dupSim ?? 12,
+            dupMatch: j.record.dupMatch ?? null,
+            lang: j.record.lang,
+            docLabel: j.record.docLabel,
+          });
+          setFields(j.record.fields);
+          setTimeout(() => router.push("/extraction"), 500);
+        } else if (j.status === "failed") {
+          setMsg(msgs.failed + " " + (j.error || ""));
+          setTimeout(() => router.push("/extraction"), 1000);
+        } else {
+          setTimeout(poll, 800);
+        }
+      } catch {
+        setMsg("Backend offline — showing sample data");
+        setTimeout(() => router.push("/extraction"), 1200);
       }
-    }, 420);
-    return () => clearInterval(t);
-  }, [router]);
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [router, jobId, setCase, setFields]);
 
-  const stepIdx = Math.min(steps.length - 1, Math.floor((pct / 100) * steps.length));
+  const stepIdx = mode === "backend" ? Math.floor((pct/100)*steps.length) : Math.min(steps.length-1, Math.floor((pct/100)*steps.length));
   const bgImg = uploadedFile?.isImage && uploadedFile.url ? `url(${uploadedFile.url})` : undefined;
 
   return (
     <div>
-      <div className="mb-5"><h2 className="font-[var(--font-serif)] text-2xl font-semibold">AI processing</h2><p className="text-sm text-[var(--gray-600)]">{currentCase.docLabel}</p></div>
+      <div className="mb-5"><h2 className="font-[var(--font-serif)] text-2xl font-semibold">AI processing</h2><p className="text-sm text-[var(--gray-600)]">{currentCase.docLabel} {mode==="backend" && jobId ? `· Job ${jobId}` : ""}</p></div>
       <Tracker activeIdx={2} />
       <div className="grid grid-cols-3 gap-3 mb-4">
         {[
@@ -66,8 +117,9 @@ export default function Processing() {
             ))}
           </ul>
           <div className="flex gap-2 flex-wrap mt-4">
-            {["OCR Engine", "Computer Vision", "NLP Engine", "Validation Engine"].map(t => <span key={t} className="text-[11px] font-mono bg-[var(--surface-raised)] border border-[var(--border-hairline)] px-2.5 py-1 rounded-lg text-[var(--gray-600)]">{t}</span>)}
+            {["OCR Engine: Gemini", "Computer Vision", "NLP Engine: Sarvam fallback", "Validation Engine"].map(t => <span key={t} className="text-[11px] font-mono bg-[var(--surface-raised)] border border-[var(--border-hairline)] px-2.5 py-1 rounded-lg text-[var(--gray-600)]">{t}</span>)}
           </div>
+          {mode==="backend" && <p className="text-[11px] text-[var(--gray-500)] mt-3">Polling <code>/api/jobs/{jobId}</code> every 800ms — Gemini VLM does heavy lifting, laptop stays light.</p>}
         </div>
       </div>
     </div>
