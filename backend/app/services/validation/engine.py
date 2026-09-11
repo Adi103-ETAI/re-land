@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.models.validation import ValidationRun, ValidationCheck, ValidationConflict, CheckStatus, CheckSeverity
 from app.models.record import LandRecord, OwnershipHistory, Parcel
@@ -27,7 +28,7 @@ class BaseValidationCheck(abc.ABC):
 
 
 class BusinessRulesCheck(BaseValidationCheck):
-    """Check business rules: area > 0, khata pattern KH-\d{4,6}, survey number format valid."""
+    """Check business rules: area > 0, khata pattern KH-\\d{4,6}, survey number format valid."""
 
     async def run(self, record: dict, db_session: AsyncSession) -> dict:
         check_name = "business_rules"
@@ -60,7 +61,7 @@ class BusinessRulesCheck(BaseValidationCheck):
             status = CheckStatus.FAIL
 
         if khata and not re.match(r"^KH-\d{4,6}$", str(khata)):
-            issues.append(f"Khata number '{khata}' does not match pattern KH-\\\\d{{4,6}}")
+            issues.append(f"Khata number '{khata}' does not match pattern KH-\\d{{4,6}}")
             severity = CheckSeverity.MINOR if severity == CheckSeverity.INFORMATIONAL else severity
             status = CheckStatus.WARNING
 
@@ -303,7 +304,7 @@ class ValidationEngine:
         """Run all validation checks and determine routing decision."""
 
         # Fetch the extracted record to build the record dict
-        stmt = select(ExtractedRecord).where(ExtractedRecord.id == extracted_record_id)
+        stmt = select(ExtractedRecord).options(selectinload(ExtractedRecord.fields)).where(ExtractedRecord.id == extracted_record_id)
         result = await db_session.execute(stmt)
         extracted_record = result.scalar_one_or_none()
 
