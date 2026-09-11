@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.validation import ValidationRun, ValidationCheck, ValidationConflict, CheckStatus, CheckSeverity
 from app.models.record import LandRecord, OwnershipHistory, Parcel
-from app.models.extraction import ExtractedRecord, RecordField
+from app.models.extraction import ExtractedRecord, RecordField, extracted_record_pages
 
 
 class BaseValidationCheck(abc.ABC):
