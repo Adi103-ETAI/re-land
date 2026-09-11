@@ -1,0 +1,56 @@
+services:
+  re-land-db:
+    image: postgis/postgis:16-3.4-alpine
+    volumes:
+      - landlens_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: landlens
+      POSTGRES_USER: landlens
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U landlens -d landlens"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  re-land-redis:
+    image: redis:7-alpine
+    volumes:
+      - landlens_cache:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  re-land-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      re-land-db:
+        condition: service_healthy
+      re-land-redis:
+        condition: service_healthy
+    env_file:
+      - .env
+
+  re-land-frontend:
+    image: nginx:alpine
+    ports:
+      - "3000:3000"
+    depends_on:
+      - re-land-backend
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./frontend-static:/usr/share/nginx/html:ro
+
+volumes:
+  landlens_data:
+  landlens_cache:
