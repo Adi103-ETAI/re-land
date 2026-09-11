@@ -1,6 +1,12 @@
-import os, uuid, asyncio
+import os, uuid, asyncio, logging
 from app.core.jobs import set_progress, set_done, set_error
 from app.core.config import ENABLE_VLM, VLM_PROVIDER, VLM_API_KEY, VLM_MODEL
+
+# OCR service layer — preprocessing + tesseract engine + layout detection
+from app.services.ocr.preprocess import preprocess_page
+from app.services.ocr.engine import OCREngine
+
+logger = logging.getLogger(__name__)
 
 # Map Gemini output keys → CaseRecord + confidence
 FIELD_MAP = {
@@ -95,8 +101,35 @@ def _to_record(recId: str, docLabel: str, gem: dict, lang: str):
 async def run_pipeline(job_id: str, file_path: str, lang: str = "Marathi"):
     try:
         set_progress(job_id, "preprocess", 10)
+        # OCR preprocessing (CLAHE, threshold, denoise, deskew) — evidence-preserving
+        try:
+            cleaned = await preprocess_page(file_path)
+            logger.debug("preprocess_page OK for %s (mode=%s size=%s)", file_path, getattr(cleaned, "mode", "?"), getattr(cleaned, "size", "?"))
+        except Exception as e:
+            logger.warning("preprocess_page failed for %s: %s", file_path, e)
         await asyncio.sleep(0.3)
         set_progress(job_id, "ocr", 30)
+        # OCR engine: Tesseract PSM 6 + langdetect + VLM fallback for handwritten regions
+        ocr_results: list[dict] = []
+        layout_regions: list[dict] = []
+        try:
+            engine = OCREngine()
+            # Layout detection (table/paragraph/stamp/signature) runs before/parallel to OCR
+            try:
+                layout_regions = await engine.detect_layout(file_path)
+                logger.debug("detect_layout found %d regions for %s", len(layout_regions), file_path)
+            except Exception as e:
+                logger.warning("detect_layout failed: %s", e)
+            # Map UI lang to tesseract code (Marathi → mar)
+            _lang_map = {"marathi": "mar", "hindi": "hin", "english": "eng"}
+            tess_lang = _lang_map.get(lang.lower(), "mar+hin+eng") if "+" not in lang.lower() else lang
+            # For mixed case default to multilingual
+            if tess_lang in ("mar", "hin", "eng"):
+                tess_lang = "mar+hin+eng"
+            ocr_results = await engine.recognize_page(page_id=1, image_path=file_path, lang=tess_lang)
+            logger.debug("OCREngine recognized %d blocks for %s", len(ocr_results), file_path)
+        except Exception as e:
+            logger.warning("OCREngine failed: %s", e)
         # Call Gemini VLM (or fallback)
         gem = None
         if ENABLE_VLM and VLM_API_KEY:
