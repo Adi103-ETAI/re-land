@@ -69,30 +69,32 @@ export default function Extraction() {
       <div className="bg-[#FFF3EA] text-[#B5651D] rounded-xl px-3.5 py-2.5 text-sm font-semibold mb-4 flex items-center gap-2">🧠 {isMock ? "Showing sample — upload will replace with careful Gemini + bbox" : "Markings shown only where Gemini found the field — missing fields have no box"}</div>
       <div className="grid grid-cols-2 gap-2.5 mb-2.5 text-[11px] font-extrabold tracking-wide text-[var(--gray-500)]"><div>BEFORE — HISTORICAL SCANNED DOCUMENT</div><div>AFTER — STRUCTURED DIGITAL RECORD</div></div>
       <div className="grid lg:grid-cols-2 gap-5">
-        <div className="relative bg-[#EFEAD9] border border-[#DCD2AE] rounded-xl overflow-hidden min-h-[520px]">
+        <div className="bg-[#EFEAD9] border border-[#DCD2AE] rounded-xl overflow-hidden">
           {uploadedFile?.url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={uploadedFile.url} alt="Scanned document" className="w-full h-auto object-contain block" />
+            <div className="relative w-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={uploadedFile.url} alt="Scanned document" className="w-full h-auto block" />
+              {/* Only show bboxes where Gemini returned coordinates — missing fields (khasra/mutation when —) have no box */}
+              {visibleBboxes.map(f => {
+                const b = f.bbox as unknown as Record<string, number>;
+                // Support both {ymin,xmin,ymax,xmax} normalized and legacy {x,y,w,h}
+                let style: React.CSSProperties = {};
+                if (b.ymin !== undefined) {
+                  style = { top: `${b.ymin*100}%`, left: `${b.xmin*100}%`, width: `${(b.xmax-b.xmin)*100}%`, height: `${(b.ymax-b.ymin)*100}%` };
+                } else if (b.x !== undefined) {
+                  style = { top: (b.y as unknown as string), left: (b.x as unknown as string), width: (b.w as unknown as string), height: (b.h as unknown as string) };
+                }
+                return (
+                  <div key={f.key} onMouseEnter={() => setHl(f.key)} onMouseLeave={() => setHl(null)}
+                    className={`absolute border-2 rounded-md cursor-pointer transition ${hl === f.key ? "bg-[rgba(248,118,19,0.22)] shadow-[0_0_0_3px_rgba(248,118,19,0.3)] border-[var(--saffron-600)]" : "bg-[rgba(248,118,19,0.10)] border-[var(--saffron-600)]"}`} style={style}>
+                    <span className="absolute -top-5 left-0 text-[10px] bg-[var(--saffron-600)] text-white px-1.5 py-0.5 rounded whitespace-nowrap">{TAG_LABEL[f.key] || f.key}</span>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
-            <div className="p-4 opacity-50 space-y-2.5">{[70, 40, 85, 55, 30, 65, 50, 75].map((w, i) => <div key={i} className="h-2.5 bg-[#D9CFA9] rounded-sm" style={{ width: `${w}%` }} />)}</div>
+            <div className="p-4 opacity-50 space-y-2.5 min-h-[520px]">{[70, 40, 85, 55, 30, 65, 50, 75].map((w, i) => <div key={i} className="h-2.5 bg-[#D9CFA9] rounded-sm" style={{ width: `${w}%` }} />)}</div>
           )}
-          {/* Only show bboxes where Gemini returned coordinates — missing fields (khasra/mutation when —) have no box */}
-          {visibleBboxes.map(f => {
-            const b = f.bbox as unknown as Record<string, number>;
-            // Support both {ymin,xmin,ymax,xmax} normalized and legacy {x,y,w,h}
-            let style: React.CSSProperties = {};
-            if (b.ymin !== undefined) {
-              style = { top: `${b.ymin*100}%`, left: `${b.xmin*100}%`, width: `${(b.xmax-b.xmin)*100}%`, height: `${(b.ymax-b.ymin)*100}%` };
-            } else if (b.x !== undefined) {
-              style = { top: b.y, left: b.x, width: b.w, height: b.h };
-            }
-            return (
-              <div key={f.key} onMouseEnter={() => setHl(f.key)} onMouseLeave={() => setHl(null)}
-                className={`absolute border-2 rounded-md cursor-pointer transition ${hl === f.key ? "bg-[rgba(248,118,19,0.22)] shadow-[0_0_0_3px_rgba(248,118,19,0.3)] border-[var(--saffron-600)]" : "bg-[rgba(248,118,19,0.10)] border-[var(--saffron-600)]"}`} style={style}>
-                <span className="absolute -top-5 left-0 text-[10px] bg-[var(--saffron-600)] text-white px-1.5 py-0.5 rounded whitespace-nowrap">{TAG_LABEL[f.key] || f.key}</span>
-              </div>
-            );
-          })}
         </div>
         <div className="space-y-2.5">
           {dynamicFields.map(f => {
