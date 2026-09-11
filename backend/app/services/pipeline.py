@@ -61,17 +61,47 @@ def _to_record(recId: str, docLabel: str, gem: dict, lang: str):
     has_mismatch = abs(rec["area"] - rec["areaDb"]) > 0.001
     score = max(70, round(100 - (6 if has_mismatch else 0) - (2 if (c9 or 0) < 0.7 else 0)))
     rec["validationScore"] = score
-    # Fields with confidence + normalized bbox for extraction UI
+    # Fields with confidence + normalized bbox for extraction UI — robust to Y-X vs X-Y order
     def parse_bbox(raw):
         if not raw or not isinstance(raw, (list, tuple)) or len(raw) != 4:
             return None
         try:
-            ymin, xmin, ymax, xmax = [float(x) for x in raw]
-            # Gemini returns 0-1000 normalized
-            if max(ymin, xmin, ymax, xmax) <= 1000:
-                return {"ymin": ymin/1000, "xmin": xmin/1000, "ymax": ymax/1000, "xmax": xmax/1000}
-            return {"ymin": ymin, "xmin": xmin, "ymax": ymax, "xmax": xmax}
-        except: return None
+            a, b, c, d = [float(x) for x in raw]
+            # Normalize 0-1000 → 0-1
+            if max(a, b, c, d) > 1.0:
+                a, b, c, d = a/1000, b/1000, c/1000, d/1000
+            # Two hypotheses: H1=[ymin,xmin,ymax,xmax] as prompted, H2=[xmin,ymin,xmax,ymax] (common model swap)
+            candidates = []
+            for ymin, xmin, ymax, xmax in [(a, b, c, d), (b, a, d, c)]:
+                if not (0 <= xmin < xmax <= 1 and 0 <= ymin < ymax <= 1):
+                    continue
+                w = xmax - xmin
+                h = ymax - ymin
+                if w <= 0 or h <= 0:
+                    continue
+                area = w * h
+                # Text is horizontal: width > height is expected. Score higher for horizontal.
+                # Also filter tiny (<0.0004) or huge (>0.4) boxes
+                if area < 0.0004 or area > 0.45:
+                    continue
+                # Clamp extreme aspect: tall narrow (h > w*1.8) is unlikely for these fields
+                ratio = w / h if h > 0 else 0
+                # Boost horizontal, penalize vertical
+                score = ratio
+                if ratio < 0.8:  # vertical
+                    score *= 0.3
+                elif ratio < 1.4:  # near square
+                    score *= 0.7
+                # Prefer boxes not hugging edge absurdly (e.g. ymin<0.02 and ymax>0.98)
+                candidates.append((score, area, {"ymin": ymin, "xmin": xmin, "ymax": ymax, "xmax": xmax}))
+            if not candidates:
+                return None
+            # Pick most horizontal large enough
+            candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
+            # If best candidate is still vertical and alternative exists, keep best anyway (Log choice)
+            return candidates[0][2]
+        except Exception:
+            return None
 
     fields = []
     for gk, rk in FIELD_MAP.items():
