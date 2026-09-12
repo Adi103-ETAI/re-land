@@ -1,6 +1,7 @@
 import os, uuid, asyncio, logging
 from app.core.jobs import set_progress, set_done, set_error
 from app.core.config import ENABLE_VLM, VLM_PROVIDER, VLM_API_KEY, VLM_MODEL
+from app.services.pipeline_db import PipelineOrchestrator, start_job
 
 # OCR service layer — preprocessing + tesseract engine + layout detection
 from app.services.ocr.preprocess import preprocess_page

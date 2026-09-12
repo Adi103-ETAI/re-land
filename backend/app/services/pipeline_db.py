@@ -175,12 +175,17 @@ async def retry_stage(
     """Attempt a retry. Returns True if stage should be retried, False if exhausted."""
     factory = session_factory or get_session_factory()
     async with factory() as session:
+        # Re-fetch the stage within this session
+        stmt = select(ProcessingStage).where(ProcessingStage.id == stage.id)
+        result = await session.execute(stmt)
+        stage = result.scalar_one()
+
         # Count existing attempts for this stage
-        stmt = select(ProcessingAttempt).where(
+        stmt_attempts = select(ProcessingAttempt).where(
             ProcessingAttempt.stage_id == stage.id
         )
-        result = await session.execute(stmt)
-        attempts = result.scalars().all()
+        result_attempts = await session.execute(stmt_attempts)
+        attempts = result_attempts.scalars().all()
         attempt_count = len(attempts)
 
         now = datetime.now(timezone.utc)
@@ -199,7 +204,7 @@ async def retry_stage(
             await session.refresh(stage)
             logger.info(
                 "Stage %s retrying (attempt %d/%d)",
-                stage.stage_name.value,
+                stage.stage_name.value if hasattr(stage.stage_name, 'value') else stage.stage_name,
                 attempt_count + 1,
                 max_retries,
             )
@@ -209,7 +214,7 @@ async def retry_stage(
             stage.completed_at = now
             await session.commit()
             await session.refresh(stage)
-            logger.warning("Stage %s exhausted retries", stage.stage_name.value)
+            logger.warning("Stage %s exhausted retries", stage.stage_name.value if hasattr(stage.stage_name, 'value') else stage.stage_name)
             return False
 
 
@@ -422,20 +427,22 @@ class PipelineOrchestrator:
         for attempt in range(max_retries + 1):
             try:
                 # Start the stage
-                await advance_stage(job_id, stage.stage_name.value, self._session_factory)
+                stage_name_str = stage.stage_name if isinstance(stage.stage_name, str) else stage.stage_name.value
+                await advance_stage(job_id, stage_name_str, self._session_factory)
 
                 # Log the attempt
                 stub_fn = STAGE_STUBS.get(stage.stage_name)
                 if stub_fn:
                     # Determine args based on stage type
+                    _NO_ARG = object()
                     args = self._get_stage_args(stage.stage_name, job_id)
-                    if args is not None:
-                        await stub_fn(args)
-                    else:
+                    if args is _NO_ARG:
                         await stub_fn()
+                    else:
+                        await stub_fn(args)
 
                 # Mark stage completed
-                await advance_stage(job_id, stage.stage_name.value, self._session_factory)
+                await advance_stage(job_id, stage_name_str, self._session_factory)
 
                 # Log successful attempt
                 await log_attempt(
@@ -450,7 +457,7 @@ class PipelineOrchestrator:
             except Exception as e:
                 logger.error(
                     "Stage %s attempt %d failed: %s",
-                    stage.stage_name.value,
+                    stage_name_str,
                     attempt + 1,
                     str(e),
                 )
@@ -478,30 +485,42 @@ class PipelineOrchestrator:
         return False
 
     def _get_stage_args(self, stage_name: StageName, job_id: int) -> Any:
-        """Return the appropriate argument for a stage stub based on its input requirements."""
+        """Return the appropriate argument for a stage stub based on its input requirements.
+        
+        Returns a special _NO_ARG sentinel for stages that take no arguments.
+        """
+        _NO_ARG = object()
+        
+        # Stages that take no arguments
+        if stage_name in (
+            StageName.PAGE_ANALYSIS,
+            StageName.IMAGE_PREPROCESSING,
+            StageName.LAYOUT_REGION_DETECTION,
+        ):
+            return _NO_ARG
+        
+        # Stages that take a job_id-like int
         if stage_name == StageName.DOCUMENT_CLASSIFICATION:
             return job_id
-        if stage_name in (StageName.LANGUAGE_DETECTION, StageName.PAGE_ANALYSIS):
-            return []
-        if stage_name == StageName.IMAGE_PREPROCESSING:
-            return None
-        if stage_name == StageName.LAYOUT_REGION_DETECTION:
-            return None
         if stage_name == StageName.OCR_HANDWRITING_RECOGNITION:
             return job_id
-        if stage_name == StageName.RECORD_SEGMENTATION:
-            return {}
+        if stage_name == StageName.VALIDATION:
+            return job_id
+        
+        # Stages that take a list
+        if stage_name == StageName.LANGUAGE_DETECTION:
+            return []
         if stage_name == StageName.FIELD_EXTRACTION:
             return []
-        if stage_name in (
-            StageName.FIELD_CLASSIFICATION,
-            StageName.NORMALIZATION,
-        ):
+        
+        # Stages that take a dict
+        if stage_name == StageName.RECORD_SEGMENTATION:
+            return {}
+        if stage_name in (StageName.FIELD_CLASSIFICATION, StageName.NORMALIZATION):
             return {}
         if stage_name == StageName.RECORD_RECONSTRUCTION:
             return {}
-        if stage_name == StageName.VALIDATION:
-            return job_id
         if stage_name == StageName.DECISION:
             return {}
-        return None
+        
+        return _NO_ARG
