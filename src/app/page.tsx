@@ -1,6 +1,35 @@
+"use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { supabase, getSession } from "@/lib/supabase";
 
 export default function Landing() {
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Check for existing session
+    getSession().then(session => {
+      if (session?.user) {
+        setUser(session.user);
+      }
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
   return (
     <div className="min-h-screen bg-[var(--surface-page)]">
       {/* Navigation */}
@@ -8,14 +37,33 @@ export default function Landing() {
         <div className="flex items-center gap-2.5 font-extrabold text-lg tracking-tight text-[var(--ink-800)]">
           <span className="w-2.5 h-2.5 rounded-[3px] bg-gradient-to-br from-[var(--saffron-600)] to-[var(--indigo-500)]" /> LANDLENS
         </div>
+        
         <div className="hidden md:flex gap-8 text-sm font-medium text-[var(--gray-600)]">
           <a href="#features" className="hover:text-[var(--ink-800)]">Features</a>
           <a href="#integration" className="hover:text-[var(--ink-800)]">Integration</a>
           <a href="#security" className="hover:text-[var(--ink-800)]">Security</a>
         </div>
-        <div className="flex gap-3">
-          <Link href="/login" className="btn btn-ghost btn-sm">Officer Login</Link>
-          <Link href="/signup" className="btn btn-teal btn-sm">Register</Link>
+        
+        <div className="flex items-center gap-4">
+          {loading ? (
+            <div className="text-sm text-[var(--gray-600)]">Loading...</div>
+          ) : user ? (
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-[var(--gray-700)]">Hi, {user.email?.split('@')[0]}</span>
+              <Link href="/dashboard" className="btn btn-teal btn-sm">Dashboard</Link>
+              <button 
+                onClick={handleLogout}
+                className="btn btn-ghost btn-sm"
+              >
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <>
+              <Link href="/login" className="btn btn-ghost btn-sm">Officer Login</Link>
+              <Link href="/signup" className="btn btn-teal btn-sm">Register</Link>
+            </>
+          )}
         </div>
       </nav>
 
@@ -36,8 +84,14 @@ export default function Landing() {
             AI-powered digitization, validation and verification of India&apos;s legacy land records — from a faded 1962 register to a verified digital record, with a human in the loop wherever it matters.
           </p>
           <div className="flex gap-3.5 justify-center mt-8 flex-wrap">
-            <Link href="/signup" className="btn btn-teal">Create Account</Link>
-            <Link href="/login" className="btn btn-ghost">Officer Login</Link>
+            {user ? (
+              <Link href="/dashboard" className="btn btn-teal">Go to Dashboard</Link>
+            ) : (
+              <>
+                <Link href="/signup" className="btn btn-teal">Create Account</Link>
+                <Link href="/login" className="btn btn-ghost">Officer Login</Link>
+              </>
+            )}
             <a href="#features" className="btn btn-ghost">Learn more</a>
           </div>
         </div>
@@ -118,8 +172,15 @@ export default function Landing() {
           <h2 className="relative font-[var(--font-serif)] text-3xl mb-2">See the full digitization workflow in action.</h2>
           <p className="relative text-[#DCE5FE] mb-6">From a scanned 1962 register to a verified digital record, in one guided walkthrough.</p>
           <div className="relative flex gap-3 justify-center">
-            <Link href="/signup" className="btn bg-white text-[var(--ink-800)] hover:bg-[var(--surface-raised)]">Create Account</Link>
-            <Link href="/login" className="btn bg-white/20 text-white hover:bg-white/30">Officer Login</Link>
+            {!user && (
+              <>
+                <Link href="/signup" className="btn bg-white text-[var(--ink-800)] hover:bg-[var(--surface-raised)]">Create Account</Link>
+                <Link href="/login" className="btn bg-white/20 text-white hover:bg-white/30">Officer Login</Link>
+              </>
+            )}
+            {user && (
+              <Link href="/dashboard" className="btn bg-white text-[var(--ink-800)] hover:bg-[var(--surface-raised)]">Go to Dashboard</Link>
+            )}
           </div>
         </div>
       </div>

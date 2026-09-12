@@ -1,6 +1,18 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { supabase, signUp } from "@/lib/supabase";
+
+type UserRole = "operator" | "verifier" | "senior" | "auditor" | "admin";
+
+const ROLES: { value: UserRole; label: string; desc: string }[] = [
+  { value: "operator", label: "Field Operator", desc: "Document upload and initial extraction" },
+  { value: "verifier", label: "Verifier", desc: "Review and validate extracted records" },
+  { value: "senior", label: "Senior Officer", desc: "Approve high-risk findings" },
+  { value: "auditor", label: "Auditor", desc: "Access full audit trails" },
+  { value: "admin", label: "Administrator", desc: "System management" },
+];
 
 export default function SignupPage() {
   const [formData, setFormData] = useState({
@@ -8,13 +20,14 @@ export default function SignupPage() {
     email: "",
     password: "",
     confirmPassword: "",
-    role: "verifier" as string,
+    role: "operator" as UserRole,
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData({ ...formData, [e.target.value]: e.target.name });
+    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -34,73 +47,41 @@ export default function SignupPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/v1/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          role: formData.role,
-        }),
-      });
+      const { data, error } = await signUp(formData.email, formData.password, formData.name, formData.role);
+      if (error) throw error;
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.detail || "Registration failed");
-      }
-
-      // Auto-login after registration
-      const loginRes = await fetch("/api/v1/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-        }),
-      });
-
-      if (loginRes.ok) {
-        const data = await loginRes.json();
-        localStorage.setItem("access_token", data.access_token);
-        localStorage.setItem("refresh_token", data.refresh_token);
-        localStorage.setItem("user", JSON.stringify(data.user));
-        window.location.href = "/dashboard";
+      // Redirect based on role
+      if (data.user) {
+        router.push("/dashboard");
       }
     } catch (err: any) {
-      setError(err.message || "Registration failed");
+      setError(err.message || "Registration failed. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[var(--surface-page)] flex items-center justify-center px-4 py-12">
+    <div className="min-h-screen flex items-center justify-center bg-[var(--surface-page)] px-4 py-12">
       <div className="max-w-md w-full">
-        {/* Logo */}
         <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2.5 font-extrabold text-xl tracking-tight text-[var(--ink-800)]">
+          <Link href="/" className="inline-flex items-center gap-2 font-extrabold text-xl text-[var(--ink-800)]">
             <span className="w-3 h-3 rounded-[4px] bg-gradient-to-br from-[var(--saffron-600)] to-[var(--indigo-500)]" />
             LANDLENS
           </Link>
-          <p className="text-sm text-[var(--gray-600)] mt-2">Create your officer account</p>
+          <p className="mt-2 text-[var(--gray-600)]">Create Officer Account</p>
         </div>
 
-        {/* Signup Card */}
         <div className="card !p-8">
-          <h2 className="font-[var(--font-serif)] text-2xl font-semibold text-[var(--ink-900)] mb-6">
-            Registration
-          </h2>
-
           {error && (
-            <div className="mb-4 p-3 bg-[var(--red-50)] border border-[var(--red-200)] rounded-lg text-sm text-[var(--red-700)]">
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
               {error}
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-[var(--ink-700)] mb-1.5">
+              <label className="block text-sm font-medium text-[var(--ink-700)] mb-1">
                 Full Name
               </label>
               <input
@@ -109,14 +90,14 @@ export default function SignupPage() {
                 value={formData.name}
                 onChange={handleChange}
                 className="input w-full"
-                placeholder="Rajesh Deshmukh"
+                placeholder="John Doe"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[var(--ink-700)] mb-1.5">
-                Email Address
+              <label className="block text-sm font-medium text-[var(--ink-700)] mb-1">
+                Officer Email
               </label>
               <input
                 type="email"
@@ -130,25 +111,7 @@ export default function SignupPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[var(--ink-700)] mb-1.5">
-                Role
-              </label>
-              <select
-                name="role"
-                value={formData.role}
-                onChange={handleChange}
-                className="input w-full"
-              >
-                <option value="operator">Digitization Operator</option>
-                <option value="verifier">Verification Officer</option>
-                <option value="senior">Senior Officer</option>
-                <option value="auditor">Auditor</option>
-                <option value="admin">Administrator</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-[var(--ink-700)] mb-1.5">
+              <label className="block text-sm font-medium text-[var(--ink-700)] mb-1">
                 Password
               </label>
               <input
@@ -157,13 +120,13 @@ export default function SignupPage() {
                 value={formData.password}
                 onChange={handleChange}
                 className="input w-full"
-                placeholder="Min 6 characters"
+                placeholder="Min. 6 characters"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-[var(--ink-700)] mb-1.5">
+              <label className="block text-sm font-medium text-[var(--ink-700)] mb-1">
                 Confirm Password
               </label>
               <input
@@ -172,9 +135,30 @@ export default function SignupPage() {
                 value={formData.confirmPassword}
                 onChange={handleChange}
                 className="input w-full"
-                placeholder="Repeat password"
+                placeholder="••••••••"
                 required
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-[var(--ink-700)] mb-1">
+                Role
+              </label>
+              <select
+                name="role"
+                value={formData.role}
+                onChange={handleChange}
+                className="input w-full"
+              >
+                {ROLES.map(role => (
+                  <option key={role.value} value={role.value}>
+                    {role.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-[var(--gray-600)] mt-1">
+                {ROLES.find(r => r.value === formData.role)?.desc}
+              </p>
             </div>
 
             <button
@@ -186,18 +170,15 @@ export default function SignupPage() {
             </button>
           </form>
 
-          <div className="mt-6 text-center text-sm">
-            <span className="text-[var(--gray-600)]">Already have an account? </span>
-            <Link href="/login" className="text-[var(--saffron-600)] hover:text-[var(--saffron-700)] font-medium">
-              Sign in
-            </Link>
+          <div className="mt-6 pt-6 border-t border-[var(--border-hairline)] text-center">
+            <p className="text-sm text-[var(--gray-600)]">
+              Already have an account?{" "}
+              <Link href="/login" className="text-[var(--teal-600)] hover:underline font-medium">
+                Sign In
+              </Link>
+            </p>
           </div>
         </div>
-
-        {/* Footer */}
-        <p className="text-center text-xs text-[var(--gray-500)] mt-6">
-          SIH 2026 Prototype · Authorized government officers only
-        </p>
       </div>
     </div>
   );

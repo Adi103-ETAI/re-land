@@ -1,92 +1,196 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
-import { chartData } from "@/data/analytics";
+import { supabase, getSession } from "@/lib/supabase";
+import type { Profile, UserRole } from "@/lib/supabase";
 
-export default function Dashboard() {
-  const c1 = useRef<HTMLCanvasElement>(null);
-  const c2 = useRef<HTMLCanvasElement>(null);
-  const c3 = useRef<HTMLCanvasElement>(null);
-  const c4 = useRef<HTMLCanvasElement>(null);
+const ROLES: { value: UserRole; label: string; color: string }[] = [
+  { value: "operator", label: "Field Operator", color: "bg-blue-100 text-blue-800" },
+  { value: "verifier", label: "Verifier", color: "bg-green-100 text-green-800" },
+  { value: "senior", label: "Senior Officer", color: "bg-yellow-100 text-yellow-800" },
+  { value: "auditor", label: "Auditor", color: "bg-purple-100 text-purple-800" },
+  { value: "admin", label: "Administrator", color: "bg-red-100 text-red-800" },
+];
+
+export default function DashboardPage() {
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [stats, setStats] = useState({
+    totalDocuments: 0,
+    processingJobs: 0,
+    pendingVerification: 0,
+    highRiskRecords: 0,
+  });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let cancelled = false;
-    import("chart.js/auto").then(({ default: Chart }) => {
-      if (cancelled) return;
-      (Chart.defaults.font as unknown as { family: string }).family = "Inter,sans-serif";
-      (Chart.defaults as unknown as { color: string }).color = "#717171";
-      const teal = "#F87613";
-      const navy = "#2A2C33";
-      const blue = "#3C415B";
-      const warn = "#B5651D", err = "#A13A2C", line = "#ECECEC";
-      if (c1.current) new Chart(c1.current, { type: "line", data: { labels: chartData.processed.labels, datasets: [{ label: "Documents processed", data: chartData.processed.values, borderColor: teal, backgroundColor: "rgba(248,118,19,0.12)", fill: true, tension: 0.35, pointRadius: 0, borderWidth: 2.5 }] }, options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: line } }, x: { grid: { display: false } } } } });
-      if (c2.current) new Chart(c2.current, { type: "doughnut", data: { labels: chartData.validation.labels, datasets: [{ data: chartData.validation.values, backgroundColor: [teal, warn, err], borderWidth: 0 }] }, options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 10, padding: 14 } } }, cutout: "68%" } });
-      if (c3.current) new Chart(c3.current, { type: "bar", data: { labels: chartData.state.labels, datasets: [{ data: chartData.state.values, backgroundColor: blue, borderRadius: 6, maxBarThickness: 34 } as unknown as never] }, options: { plugins: { legend: { display: false } }, scales: { y: { grid: { color: line }, max: 100 }, x: { grid: { display: false } } } } });
-      const errData = { labels: chartData.errorCats.labels, datasets: [{ data: chartData.errorCats.values, backgroundColor: [navy, blue, teal, warn, err, "#A7B6F2"], borderRadius: 6 }] };
-      if (c4.current) new Chart(c4.current, { type: "bar", data: errData, options: { indexAxis: "y", plugins: { legend: { display: false } }, scales: { x: { grid: { color: line } }, y: { grid: { display: false } } } } as unknown as never });
+    const init = async () => {
+      const session = await getSession();
+      if (!session?.user) {
+        window.location.href = "/login";
+        return;
+      }
+
+      setUser(session.user);
+
+      // Fetch profile
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", session.user.id)
+        .single();
+      
+      setProfile(profileData as Profile);
+
+      // Fetch stats (in production, this would query actual backend)
+      setStats({
+        totalDocuments: 24,
+        processingJobs: 3,
+        pendingVerification: 12,
+        highRiskRecords: 2,
+      });
+
+      setLoading(false);
+    };
+
+    init();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!session) {
+        window.location.href = "/login";
+      }
     });
-    return () => { cancelled = true; };
+
+    return () => subscription.unsubscribe();
   }, []);
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/";
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--surface-page)]">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-[var(--teal-600)] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-[var(--gray-600)]">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const currentRole = ROLES.find(r => r.value === profile?.role);
+
   return (
-    <div>
-      <div className="flex items-baseline justify-between mb-5 flex-wrap gap-2">
-        <div><h2 className="font-[var(--font-serif)] text-2xl font-semibold text-[var(--ink-900)]">Digitization overview</h2><p className="text-sm text-[var(--gray-600)]">Pune district · Maharashtra land records division</p></div>
-        <Link href="/upload" className="btn btn-teal btn-sm">+ Upload record</Link>
-      </div>
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3.5 mb-6">
-        {[
-          ["Total records", "14,320", "↑ 3.1% this month"],
-          ["Records processed", "12,846", "↑ 4.2% this month"],
-          ["Records verified", "9,820", "↑ 62 today"],
-          ["Pending verification", "247", ""],
-          ["Issues detected", "473", ""],
-          ["Average AI confidence", "91.2%", ""],
-        ].map(([l, v, d]) => (
-          <div key={l} className="card !p-4">
-            <div className="text-[11px] font-bold text-[var(--gray-500)] uppercase tracking-wide">{l}</div>
-            <div className="font-mono text-xl font-bold text-[var(--ink-800)] mt-1">{v}</div>
-            {d && <div className="text-[11px] text-[#496D21] font-semibold">{d}</div>}
+    <div className="min-h-screen bg-[var(--surface-page)]">
+      {/* Header */}
+      <header className="bg-white border-b border-[var(--border-hairline)] px-8 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            <Link href="/" className="flex items-center gap-2 font-extrabold text-lg text-[var(--ink-800)]">
+              <span className="w-2.5 h-2.5 rounded-[3px] bg-gradient-to-br from-[var(--saffron-600)] to-[var(--indigo-500)]" />
+              LANDLENS
+            </Link>
+            
+            <nav className="hidden md:flex gap-6 text-sm">
+              <Link href="/dashboard" className="font-medium text-[var(--ink-800)]">Dashboard</Link>
+              <Link href="/upload" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Upload</Link>
+              <Link href="/records" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Records</Link>
+              <Link href="/verification" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Verification</Link>
+              <Link href="/audit" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Audit</Link>
+            </nav>
           </div>
-        ))}
-      </div>
-      <div className="grid lg:grid-cols-[1.4fr_1fr] gap-4">
-        <div className="card">
-          <h3 className="text-sm font-semibold text-[var(--ink-800)] mb-4">AI processing funnel</h3>
-          <div className="flex flex-col gap-0">
-            {chartData.funnel.map(f => (
-              <div key={f.label} className="flex items-center gap-3.5 py-2.5 border-b border-dashed border-[var(--border-hairline)] last:border-0">
-                <div className="w-[150px] shrink-0 text-sm font-semibold text-[var(--ink-900)]">{f.label}</div>
-                <div className="h-[30px] rounded-lg bg-gradient-to-r from-[var(--saffron-600)] to-[#3C415B] flex items-center px-3 text-white font-mono text-xs font-bold" style={{ width: `${Math.round(f.value / 14320 * 100)}%` }}>{f.value.toLocaleString()}</div>
-              </div>
-            ))}
+
+          <div className="flex items-center gap-4">
+            <div className="text-right hidden sm:block">
+              <div className="text-sm font-medium text-[var(--ink-800)]">{profile?.name || user?.email?.split("@")[0]}</div>
+              {currentRole && (
+                <span className={`text-xs px-2 py-0.5 rounded-full ${currentRole.color}`}>
+                  {currentRole.label}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={handleLogout}
+              className="btn btn-ghost btn-sm"
+            >
+              Sign Out
+            </button>
           </div>
         </div>
-        <div className="card">
-          <h3 className="text-sm font-semibold text-[var(--ink-800)] mb-4">Recent activity</h3>
-          <div className="flex flex-col">
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-8 py-8">
+        {/* Welcome Section */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-[var(--font-serif)] text-[var(--ink-900)] mb-2">
+            Welcome back, {profile?.name || user?.email?.split("@")[0]}!
+          </h1>
+          <p className="text-[var(--gray-600)]">
+            Here&apos;s your land record digitization overview for today.
+          </p>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          {[
+            { label: "Total Documents", value: stats.totalDocuments, icon: "📄", color: "bg-blue-50" },
+            { label: "Processing Jobs", value: stats.processingJobs, icon: "⚙️", color: "bg-yellow-50" },
+            { label: "Pending Verification", value: stats.pendingVerification, icon: "✓", color: "bg-green-50" },
+            { label: "High Risk Records", value: stats.highRiskRecords, icon: "⚠️", color: "bg-red-50" },
+          ].map(({ label, value, icon, color }) => (
+            <div key={label} className={`card !p-5 ${color}`}>
+              <div className="text-2xl mb-2">{icon}</div>
+              <div className="text-2xl font-bold text-[var(--ink-900)]">{value}</div>
+              <div className="text-sm text-[var(--gray-600)]">{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Quick Actions */}
+        <div className="card !p-6 mb-8">
+          <h2 className="font-semibold text-[var(--ink-900)] mb-4">Quick Actions</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Link href="/upload" className="btn btn-teal">
+              Upload Document
+            </Link>
+            <Link href="/verification" className="btn btn-ghost">
+              Review Queue
+            </Link>
+            <Link href="/records" className="btn btn-ghost">
+              View Records
+            </Link>
+            <Link href="/audit" className="btn btn-ghost">
+              Audit Trail
+            </Link>
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="card !p-6">
+          <h2 className="font-semibold text-[var(--ink-900)] mb-4">Recent Activity</h2>
+          <div className="space-y-3">
             {[
-              ["AI extraction completed for LR-MH-2026-000257", "2 min ago"],
-              ["Officer R. Deshmukh approved LR-MH-2026-000184", "14 min ago"],
-              ["Area mismatch flagged on LR-1024", "22 min ago"],
-              ["Duplicate check cleared for LR-MH-2026-000233", "41 min ago"],
-              ["126 documents uploaded from Khed tehsil", "1 hr ago"],
-            ].map(([m, t]) => (
-              <div key={m} className="flex justify-between items-center py-2.5 border-b border-[var(--border-hairline)] last:border-0 text-sm">
-                <span className="text-[var(--ink-900)]">{m}</span><span className="text-xs font-mono text-[var(--gray-600)]">{t}</span>
+              { action: "Document uploaded", detail: "Revenue Survey No. 45.pdf", time: "2 minutes ago", icon: "📄" },
+              { action: "Extraction completed", detail: "Record #12847 - Confidence: 94%", time: "15 minutes ago", icon: "✓" },
+              { action: "Verification pending", detail: "High-risk record #12850 flagged", time: "1 hour ago", icon: "⚠️" },
+              { action: "Record approved", detail: "Khasra No. 234 by Verifier A", time: "2 hours ago", icon: "✅" },
+            ].map((item, i) => (
+              <div key={i} className="flex items-center gap-4 py-3 border-b border-[var(--border-hairline)] last:border-0">
+                <span className="text-xl">{item.icon}</span>
+                <div className="flex-1">
+                  <div className="font-medium text-[var(--ink-800)]">{item.action}</div>
+                  <div className="text-sm text-[var(--gray-600)]">{item.detail}</div>
+                </div>
+                <div className="text-xs text-[var(--gray-500)]">{item.time}</div>
               </div>
             ))}
           </div>
         </div>
-      </div>
-      <div className="grid lg:grid-cols-2 gap-4 mt-4">
-        <div className="card"><h3 className="text-sm font-semibold text-[var(--ink-800)] mb-4">Documents processed over time</h3><canvas ref={c1} height={150} /></div>
-        <div className="card"><h3 className="text-sm font-semibold text-[var(--ink-800)] mb-4">Validation status</h3><canvas ref={c2} height={150} /></div>
-      </div>
-      <div className="grid lg:grid-cols-2 gap-4 mt-4">
-        <div className="card"><h3 className="text-sm font-semibold text-[var(--ink-800)] mb-4">State-wise digitization progress</h3><canvas ref={c3} height={140} /></div>
-        <div className="card"><h3 className="text-sm font-semibold text-[var(--ink-800)] mb-4">Error categories</h3><canvas ref={c4} height={140} /></div>
-      </div>
+      </main>
     </div>
   );
 }
