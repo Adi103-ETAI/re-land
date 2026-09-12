@@ -1,156 +1,205 @@
 "use client";
-import { useState, useRef } from "react";
-import { useRouter } from "next/navigation";
-import Tracker from "@/components/workflow/Tracker";
-import { useCaseStore } from "@/store/case-store";
-import { caseRecords } from "@/data/cases";
-import { runOcr, ocrToCase, generateFromFileMeta } from "@/lib/ocr";
+import { useState } from "react";
+import Link from "next/link";
+import { supabase } from "@/lib/supabase";
 
 export default function UploadPage() {
-  const router = useRouter();
-  const { setCase, uploadedFile, setUploadedFile, pickedSample, setPickedSample, setOcrResult, setJobId, setFields } = useCaseStore();
-  const [lang, setLang] = useState("Marathi");
-  const [drag, setDrag] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState("");
+  const [uploadSuccess, setUploadSuccess] = useState(false);
 
-  const handleFiles = (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    const isImage = /^image\//.test(file.type) || /\.(jpg|jpeg|png|tif|tiff)$/i.test(file.name);
-    const url = isImage ? URL.createObjectURL(file) : null;
-    const sizeLabel = file.size > 1024 * 1024 ? (file.size / 1024 / 1024).toFixed(1) + " MB" : Math.max(1, Math.round(file.size / 1024)) + " KB";
-    setUploadedFile({ name: file.name, sizeLabel: `${sizeLabel} · ${file.type || "unknown"}`, url, isImage });
-  };
-
-  const clear = () => {
-    if (uploadedFile?.url) URL.revokeObjectURL(uploadedFile.url);
-    setUploadedFile(null);
-    if (inputRef.current) inputRef.current.value = "";
-    setPickedSample(0);
-  };
-
-  const pickSample = (i: number) => {
-    if (uploadedFile?.url) URL.revokeObjectURL(uploadedFile.url);
-    setUploadedFile(null);
-    if (inputRef.current) inputRef.current.value = "";
-    setPickedSample(i);
-  };
-
-  const start = async () => {
-    setLoading(true);
-    // Try backend first — careful extraction pipeline (see backend/PLAN.md)
-    if (uploadedFile && inputRef.current?.files?.[0]) {
-      try {
-        const fd = new FormData();
-        fd.append("file", inputRef.current.files[0]);
-        fd.append("lang", lang);
-        const res = await fetch("/api/upload", { method: "POST", body: fd });
-        if (res.ok) {
-          const job = await res.json();
-          setJobId(job.jobId);
-          setFields(null);
-          sessionStorage.setItem("landlens_jobId", job.jobId);
-          router.push("/processing");
-          return;
-        }
-      } catch {
-        // backend not running — fall through to client OCR
-      }
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+      setError("");
     }
-    // Fallback: client-side Tesseract.js (demo mode, see src/lib/ocr.ts)
-    if (uploadedFile) {
-      try {
-        const ext = uploadedFile.name.toLowerCase();
-        const isImageFile = /\.(png|jpg|jpeg|tif|tiff)$/.test(ext);
-        let ocrPatch = null;
-        if (isImageFile && inputRef.current?.files?.[0]) {
-          const file = inputRef.current.files[0];
-          const res = await runOcr(file, lang);
-          setOcrResult(res.text.slice(0, 2000), res.confidence);
-          ocrPatch = ocrToCase(res);
-        }
-        const fileObj = inputRef.current?.files?.[0] ?? new File([], uploadedFile.name);
-        Object.defineProperty(fileObj, "size", { value: 1024 * (10 + uploadedFile.name.length) });
-        const c = generateFromFileMeta(fileObj as File, ocrPatch);
-        setCase(c);
-      } catch {
-        const fileObj = new File([], uploadedFile.name);
-        Object.defineProperty(fileObj, "size", { value: 1024 * (10 + uploadedFile.name.length) });
-        setCase(generateFromFileMeta(fileObj as File, null));
-      }
-    } else {
-      setCase(caseRecords[pickedSample]);
+  };
+
+  const handleUpload = async () => {
+    if (!file) {
+      setError("Please select a file first");
+      return;
     }
-    router.push("/processing");
+
+    // Validate file type
+    const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/tiff"];
+    if (!allowedTypes.includes(file.type)) {
+      setError("Invalid file type. Please upload PDF, JPEG, PNG, or TIFF.");
+      return;
+    }
+
+    setUploading(true);
+    setProgress(0);
+    setError("");
+
+    try {
+      // Get user session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        window.location.href = "/login";
+        return;
+      }
+
+      // Create form data
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("user_id", session.user.id);
+
+      // Simulate upload progress
+      const interval = setInterval(() => {
+        setProgress(prev => Math.min(prev + 10, 90));
+      }, 200);
+
+      // Call upload API (replace with actual endpoint once backend is ready)
+      const response = await fetch("/api/v1/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      clearInterval(interval);
+      setProgress(100);
+
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+
+      const result = await response.json();
+      setUploadSuccess(true);
+      
+      // Redirect to processing or records page
+      setTimeout(() => {
+        window.location.href = `/processing/${result.job_id}`;
+      }, 1500);
+
+    } catch (err: any) {
+      setError(err.message || "Upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
-    <div>
-      <div className="mb-5"><h2 className="font-[var(--font-serif)] text-2xl font-semibold">Upload & digitize</h2><p className="text-sm text-[var(--gray-600)]">Upload a scanned land record. Backend pipeline (FastAPI → preprocess → OCR ensemble → fusion) extracts fields carefully; client OCR is demo fallback.</p></div>
-      <Tracker activeIdx={1} />
-      <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-4">
-        <div>
-          <div
-            onDragEnter={(e) => { e.preventDefault(); setDrag(true); }}
-            onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
-            onDragLeave={() => setDrag(false)}
-            onDrop={(e) => { e.preventDefault(); setDrag(false); handleFiles(e.dataTransfer.files); }}
-            onClick={() => { if (!uploadedFile) inputRef.current?.click(); }}
-            className={`border-2 border-dashed rounded-2xl bg-white p-12 text-center cursor-pointer transition ${drag ? "border-[var(--saffron-600)] bg-[#FFF7ED]" : "border-[#E8D9C6]"}`}
-          >
-            <input ref={inputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff" hidden onChange={(e) => handleFiles(e.target.files)} />
-            {!uploadedFile ? (
-              <>
-                <div className="text-4xl mb-3">📄</div>
-                <h3 className="font-semibold text-[var(--ink-800)]">Upload historical land record</h3>
-                <p className="text-sm text-[var(--gray-600)] mt-1 mb-4">Drag and drop a file here, or browse — or choose a sample below.</p>
-                <div className="flex gap-2 justify-center mb-4">{["PDF", "JPG", "PNG", "TIFF"].map(c => <span key={c} className="bg-[var(--surface-raised)] border border-[var(--border-hairline)] px-2.5 py-1 rounded-lg text-[11px] font-mono text-[var(--gray-600)]">{c}</span>)}</div>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}>Browse files</button>
-              </>
-            ) : (
-              <>
-                <div className="w-24 h-24 rounded-xl mx-auto mb-3 border border-[var(--border-hairline)] bg-cover bg-center flex items-center justify-center text-3xl overflow-hidden" style={uploadedFile.isImage && uploadedFile.url ? { backgroundImage: `url(${uploadedFile.url})` } : {}}>
-                  {!uploadedFile.isImage && "📄"}
+    <div className="min-h-screen bg-[var(--surface-page)]">
+      {/* Header */}
+      <header className="bg-white border-b border-[var(--border-hairline)] px-8 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <Link href="/dashboard" className="flex items-center gap-2 font-extrabold text-lg text-[var(--ink-800)]">
+            <span className="w-2.5 h-2.5 rounded-[3px] bg-gradient-to-br from-[var(--saffron-600)] to-[var(--indigo-500)]" />
+            LANDLENS
+          </Link>
+          <nav className="flex gap-6 text-sm">
+            <Link href="/dashboard" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Dashboard</Link>
+            <Link href="/upload" className="font-medium text-[var(--ink-800)]">Upload</Link>
+            <Link href="/records" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Records</Link>
+            <Link href="/verification" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Verification</Link>
+          </nav>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-4xl mx-auto px-8 py-12">
+        <div className="mb-8">
+          <h1 className="text-3xl font-[var(--font-serif)] text-[var(--ink-900)] mb-2">Upload Document</h1>
+          <p className="text-[var(--gray-600)]">Upload land records for digitization and extraction</p>
+        </div>
+
+        {/* Upload Area */}
+        <div className="card !p-8 mb-8">
+          <div className="border-2 border-dashed border-[var(--border-hairline)] rounded-xl p-12 text-center hover:border-[var(--teal-500)] transition-colors">
+            <input
+              type="file"
+              id="file-upload"
+              accept=".pdf,.jpg,.jpeg,.png,.tiff"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+            <label htmlFor="file-upload" className="cursor-pointer">
+              <div className="text-5xl mb-4">📄</div>
+              <p className="text-lg font-medium text-[var(--ink-800)] mb-2">
+                {file ? file.name : "Drag & drop your file here"}
+              </p>
+              <p className="text-sm text-[var(--gray-600)]">
+                Supports PDF, JPEG, PNG, TIFF (Max 50MB)
+              </p>
+            </label>
+          </div>
+
+          {file && (
+            <div className="mt-4 p-4 bg-[var(--peri-100)] rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{file.type.includes("pdf") ? "📄" : "🖼️"}</span>
+                  <div>
+                    <p className="font-medium text-[var(--ink-800)]">{file.name}</p>
+                    <p className="text-sm text-[var(--gray-600)]">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                  </div>
                 </div>
-                <h3 className="font-semibold text-[var(--ink-800)]">{uploadedFile.name}</h3>
-                <p className="text-xs text-[var(--gray-600)] mb-3">{uploadedFile.sizeLabel} — ready to digitize</p>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); clear(); }}>Remove file</button>
-              </>
-            )}
-          </div>
-          <div className="card mt-4">
-            <h3 className="text-sm font-semibold mb-3">Or select a sample record</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {caseRecords.map((c, i) => (
-                <button key={c.recId} onClick={() => pickSample(i)} className={`text-left border rounded-xl p-3.5 transition ${pickedSample === i && !uploadedFile ? "border-[var(--saffron-600)] bg-[#FFF7ED]" : "border-[var(--border-hairline)] hover:border-[var(--saffron-600)]"}`}>
-                  <div className="h-16 rounded-lg mb-2 border border-[#DCD2AE] bg-[repeating-linear-gradient(0deg,#EFEAD9,#EFEAD9_3px,#E6DFC8_3px,#E6DFC8_4px)]" />
-                  <div className="text-xs font-bold text-[var(--ink-800)]">{c.docLabel.split(",")[0]}</div>
-                  <div className="text-[11px] text-[var(--gray-600)]">{c.village}, Pune · {c.lang}</div>
+                <button
+                  onClick={() => setFile(null)}
+                  className="text-[var(--gray-500)] hover:text-[var(--ink-800)]"
+                >
+                  ✕
                 </button>
-              ))}
+              </div>
             </div>
+          )}
+
+          {error && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={handleUpload}
+            disabled={uploading || !file}
+            className="btn btn-teal w-full mt-6"
+          >
+            {uploading ? `Uploading... ${progress}%` : "Start Extraction"}
+          </button>
+        </div>
+
+        {/* Supported Formats */}
+        <div className="grid md:grid-cols-3 gap-4">
+          {[
+            { icon: "📄", title: "PDF Documents", desc: "Revenue records, surveys, maps" },
+            { icon: "🗞️", title: "Handwritten Registers", desc: "Historical records, field notes" },
+            { icon: "🗺️", title: "Maps & Plans", desc: "Cadastral maps, survey plans" },
+          ].map(({ icon, title, desc }) => (
+            <div key={title} className="card !p-5 text-center">
+              <div className="text-3xl mb-3">{icon}</div>
+              <h3 className="font-semibold text-[var(--ink-900)] mb-1">{title}</h3>
+              <p className="text-sm text-[var(--gray-600)]">{desc}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Process Info */}
+        <div className="mt-8 card !p-6">
+          <h2 className="font-semibold text-[var(--ink-900)] mb-4">What happens next?</h2>
+          <div className="space-y-3">
+            {[
+              { step: 1, title: "Document Classification", desc: "AI identifies document type and language" },
+              { step: 2, title: "OCR Extraction", desc: "Text extraction using tesseract + VLM" },
+              { step: 3, title: "Field Recognition", desc: "Khasra number, owner name, area detected" },
+              { step: 4, title: "Validation", desc: "Business rules applied, risk scoring" },
+              { step: 5, title: "Review Queue", desc: "Ready for officer verification" },
+            ].map(({ step, title, desc }) => (
+              <div key={step} className="flex items-start gap-4">
+                <div className="w-8 h-8 rounded-full bg-[var(--teal-600)] text-white flex items-center justify-center font-bold flex-shrink-0">
+                  {step}
+                </div>
+                <div>
+                  <p className="font-medium text-[var(--ink-800)]">{title}</p>
+                  <p className="text-sm text-[var(--gray-600)]">{desc}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-        <div>
-          <div className="card">
-            <h3 className="text-sm font-semibold mb-2">Document language</h3>
-            <select value={lang} onChange={(e) => setLang(e.target.value)} className="w-full px-3 py-2.5 border border-[var(--border-hairline)] rounded-xl text-sm bg-white">
-              <option>Auto detect</option><option>Hindi</option><option>Marathi</option><option>English</option><option>Gujarati</option><option>Kannada</option><option>Tamil</option>
-            </select>
-          </div>
-          <div className="card mt-4">
-            <h3 className="text-sm font-semibold mb-3">AI processing options</h3>
-            <div className="grid grid-cols-1 gap-1.5 text-sm">
-              {["Detect document type","Enhance image quality","Detect handwriting","Extract landowner details","Extract survey number","Extract khasra number","Extract khata number","Extract area","Extract village / tehsil / district","Detect land classification","Extract mutation information","Validate extracted information","Detect duplicate records"].map(l => (
-                <label key={l} className="flex items-center gap-2.5 py-1 text-[var(--ink-900)]"><input type="checkbox" defaultChecked className="accent-[var(--saffron-600)] w-4 h-4" /> {l}</label>
-              ))}
-            </div>
-          </div>
-          <button onClick={start} disabled={loading} className="btn btn-teal w-full mt-4 h-12 text-sm">{loading ? "Uploading…" : "Start AI digitization"}</button>
-          <p className="text-[11px] text-[var(--gray-600)] mt-2 text-center">Backend: FastAPI + OpenCV + Paddle/TrOCR + fusion (see <code>backend/PLAN.md</code>). Falls back to browser Tesseract.js if backend offline.</p>
-        </div>
-      </div>
+      </main>
     </div>
   );
 }
