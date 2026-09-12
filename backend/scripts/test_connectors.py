@@ -1,7 +1,7 @@
 """Test government connectors."""
 import asyncio
 import sys
-sys.path.insert(0, '/home/kali/re-land/backend')
+sys.path.insert(0, str(__import__('pathlib').Path(__file__).resolve().parents[1]))
 
 from app.services.connectors.base import get_connector
 

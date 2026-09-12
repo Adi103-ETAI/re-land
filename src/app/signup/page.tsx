@@ -48,8 +48,12 @@ export default function SignupPage() {
       toast({ variant: "destructive", title: "Passwords do not match", description: "Re-enter both passwords and try again." });
       return;
     }
-    if (form.password.length < 6) {
-      toast({ variant: "destructive", title: "Password too short", description: "Use at least 6 characters." });
+    if (form.password.length < 8) {
+      toast({ variant: "destructive", title: "Password too short", description: "Use at least 8 characters." });
+      return;
+    }
+    if (!(/[a-zA-Z]/.test(form.password) && /[0-9]/.test(form.password))) {
+      toast({ variant: "destructive", title: "Weak password", description: "Passwords must contain both letters and digits." });
       return;
     }
     setLoading(true);

@@ -112,7 +112,13 @@ class AuthService:
         session = (await db.execute(
             select(Session).where(Session.token == token)
         )).scalar_one_or_none()
-        if session is None or session.expires_at < datetime.now(timezone.utc):
+        if session is None:
+            return None
+        expires = session.expires_at
+        # SQLite yields naive UTC datetimes — normalize before comparing.
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires < datetime.now(timezone.utc):
             return None
         return (await db.execute(select(User).where(User.id == session.user_id))).scalar_one_or_none()
 

@@ -5,7 +5,6 @@ Set DATABASE_URL to a Postgres URL for production.
 """
 from __future__ import annotations
 
-import hashlib
 import logging
 from datetime import datetime, timezone
 
@@ -14,6 +13,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core.config import DATABASE_URL
 from app.models.base import Base
+from app.services.auth.service import AuthService
 # Importing the models package registers every table on Base.metadata
 from app.models import (  # noqa: F401
     Approval,
@@ -50,11 +50,6 @@ def get_session_factory():
     return SessionFactory
 
 
-def _hash_password(password: str) -> str:
-    salt = "landlens-static-seed"  # deterministic seed passwords (dev only)
-    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 100000).hex()
-
-
 async def init_db() -> None:
     """Create tables (idempotent) and seed the demo officer users."""
     global _initialized
@@ -85,7 +80,7 @@ async def _seed(session) -> None:
         operator = User(
             username="operator",
             email="operator@landlens.local",
-            hashed_password=_hash_password("operator123"),
+            hashed_password=AuthService._hash_password("operator123"),
             role=UserRole.DIGITIZATION_OFFICER,
             org_unit_id=unit.id,
         )
@@ -99,12 +94,18 @@ async def _seed(session) -> None:
         verifier = User(
             username="verifier",
             email="verifier@landlens.local",
-            hashed_password=_hash_password("verifier123"),
+            hashed_password=AuthService._hash_password("verifier123"),
             role=UserRole.VERIFICATION_OFFICER,
             org_unit_id=unit.id,
         )
         session.add(verifier)
         await session.flush()
+
+    # One-time upgrade: rows seeded by the legacy static-salt hash cannot pass
+    # the salted verifier — re-hash them so demo officers can log in via /auth.
+    for user, password in ((operator, "operator123"), (verifier, "verifier123")):
+        if user is not None and "$" not in (user.hashed_password or ""):
+            user.hashed_password = AuthService._hash_password(password)
 
     batch = (await session.execute(
         select(Batch).where(Batch.original_filename == "ui-uploads")
