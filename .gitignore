@@ -1,49 +1,33 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
-
-# testing
-/coverage
+node_modules/
 
 # next.js
-/.next/
-/out/
+.next/
+out/
+build/
+next-env.d.ts
 
-# production
-/build
+# env
+.env
+.env*.local
 
 # misc
 .DS_Store
 *.pem
-
-# worktrees (development only, never commit)
-.worktrees/
-.worktrees-agents/
-
-# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-!.env.example
-
-# vercel
 .vercel
-
-# typescript
 *.tsbuildinfo
-next-env.d.ts
+
+# backend
+backend/.venv/
+backend/venv/
 __pycache__/
-.venv/
-/tmp/venv
+*.py[cod]
+backend/data/landlens.db
+backend/data/uploads/
+backend/.env
+
+# tests / scratch
+test_pipeline*.db
