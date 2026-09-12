@@ -1,5 +1,5 @@
 """User authentication and RBAC models."""
-from sqlalchemy import Column, String, Boolean, ForeignKey, Enum as SAEnum
+from sqlalchemy import Column, String, Integer, Boolean, ForeignKey, Enum as SAEnum
 from sqlalchemy.orm import relationship
 from app.models.base import Base, BaseRecord
 import enum
@@ -17,18 +17,18 @@ class OrgLevel(str, enum.Enum):
     TEHSIL = "tehsil"
     VILLAGE = "village"
 
-class OrganizationUnit(Base, BaseRecord):
+class OrganizationUnit(BaseRecord):
     """Geographic/administrative unit (State -> District -> Tehsil -> Village)."""
     __tablename__ = "organization_units"
     
     name = Column(String, nullable=False)
     level = Column(SAEnum(OrgLevel), nullable=False, index=True)
     parent_id = Column(Integer, ForeignKey('organization_units.id'), nullable=True, index=True)
-    parent = relationship("OrganizationUnit", remote_side=[id], backref="children")
+    parent = relationship("OrganizationUnit", remote_side="OrganizationUnit.id", backref="children")
     
     users = relationship("User", back_populates="org_unit")
 
-class User(Base, BaseRecord):
+class User(BaseRecord):
     """System user with role and organizational scope."""
     __tablename__ = "users"
     
@@ -48,7 +48,7 @@ class User(Base, BaseRecord):
     verification_actions = relationship("VerificationAction", back_populates="actor")
     approvals = relationship("Approval", back_populates="decided_by")
 
-class RolePermission(Base, BaseRecord):
+class RolePermission(BaseRecord):
     """Permissions tied to roles."""
     __tablename__ = "role_permissions"
     

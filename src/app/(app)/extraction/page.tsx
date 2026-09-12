@@ -90,8 +90,13 @@ export default function Extraction() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        {/* Scanned document */}
-        <div className="relative min-h-[520px] overflow-hidden rounded-2xl border border-[#d8cfae] bg-[#efe9dc]">
+        {/* Scanned document — when an image is shown, it defines the overlay
+            coordinate space (percent bboxes map 1:1 onto the img) */}
+        <div
+          className={`relative self-start overflow-hidden rounded-2xl border border-[#d8cfae] bg-[#efe9dc] ${
+            uploadedFile?.url ? "" : "min-h-[520px]"
+          }`}
+        >
           {uploadedFile?.url ? (
             <img src={uploadedFile.url} alt="Scanned document" className="block h-auto w-full object-contain" />
           ) : (

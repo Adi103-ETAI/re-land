@@ -1,5 +1,5 @@
 """Pipeline processing state models."""
-from sqlalchemy import Column, String, Integer, DateTime, Float, Boolean, ForeignKey, Enum as SAEnum, JSON
+from sqlalchemy import Column, String, Integer, DateTime, Float, Boolean, ForeignKey, Enum as SAEnum, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.models.base import Base, BaseRecord
 import enum
@@ -26,7 +26,7 @@ class StageStatus(str, enum.Enum):
     RETRYING = "retrying"
     FAILED = "failed"
 
-class ProcessingJob(Base, BaseRecord):
+class ProcessingJob(BaseRecord):
     """Asynchronous unit of work carrying a Document through pipeline stages."""
     __tablename__ = "processing_jobs"
     
@@ -39,7 +39,7 @@ class ProcessingJob(Base, BaseRecord):
     document = relationship("Document", back_populates="processing_jobs")
     stages = relationship("ProcessingStage", back_populates="job", cascade="all, delete-orphan")
 
-class ProcessingStage(Base, BaseRecord):
+class ProcessingStage(BaseRecord):
     """One named step of the pipeline with its own status."""
     __tablename__ = "processing_stages"
     
@@ -58,7 +58,7 @@ class ProcessingStage(Base, BaseRecord):
         UniqueConstraint('job_id', 'stage_name', name='uq_job_stage'),
     )
 
-class ProcessingAttempt(Base, BaseRecord):
+class ProcessingAttempt(BaseRecord):
     """One try at a Processing Stage. Retries create new attempts."""
     __tablename__ = "processing_attempts"
     

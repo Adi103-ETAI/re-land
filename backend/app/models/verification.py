@@ -31,7 +31,7 @@ class ApprovalDecision(str, enum.Enum):
     APPROVED = "approved"
     REJECTED = "rejected"
 
-class VerificationTask(Base, BaseRecord):
+class VerificationTask(BaseRecord):
     """Unit of human review work created when a record needs attention."""
     __tablename__ = "verification_tasks"
     
@@ -45,7 +45,7 @@ class VerificationTask(Base, BaseRecord):
     assigned_to = relationship("User", back_populates="verification_tasks_assigned")
     actions = relationship("VerificationAction", back_populates="task", cascade="all, delete-orphan")
 
-class VerificationAction(Base, BaseRecord):
+class VerificationAction(BaseRecord):
     """Single action taken on a Verification Task."""
     __tablename__ = "verification_actions"
     
@@ -58,7 +58,7 @@ class VerificationAction(Base, BaseRecord):
     task = relationship("VerificationTask", back_populates="actions")
     actor = relationship("User", back_populates="verification_actions")
 
-class Approval(Base, BaseRecord):
+class Approval(BaseRecord):
     """Decision event that moves an Extracted Record toward becoming a Land Record."""
     __tablename__ = "approvals"
     

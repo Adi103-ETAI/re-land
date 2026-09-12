@@ -1,5 +1,5 @@
 """Validation engine models."""
-from sqlalchemy import Column, String, Integer, Float, ForeignKey, Enum as SAEnum, JSON
+from sqlalchemy import Column, String, Integer, Float, ForeignKey, Enum as SAEnum, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.models.base import Base, BaseRecord
 import enum
@@ -22,7 +22,7 @@ class ConflictResolution(str, enum.Enum):
     IGNORED = "ignored"
     ESCALATED = "escalated"
 
-class ValidationRun(Base, BaseRecord):
+class ValidationRun(BaseRecord):
     """One execution of the validation engine against an Extracted Record."""
     __tablename__ = "validation_runs"
     
@@ -34,7 +34,7 @@ class ValidationRun(Base, BaseRecord):
     record = relationship("ExtractedRecord", back_populates="validation_runs")
     checks = relationship("ValidationCheck", back_populates="run", cascade="all, delete-orphan")
 
-class ValidationCheck(Base, BaseRecord):
+class ValidationCheck(BaseRecord):
     """One rule/comparison executed during a Validation Run."""
     __tablename__ = "validation_checks"
     
@@ -56,7 +56,7 @@ class ValidationCheck(Base, BaseRecord):
         UniqueConstraint('validation_run_id', 'check_name', name='uq_run_check'),
     )
 
-class ValidationConflict(Base, BaseRecord):
+class ValidationConflict(BaseRecord):
     """A Validation Check result indicating a mismatch requiring attention."""
     __tablename__ = "validation_conflicts"
     

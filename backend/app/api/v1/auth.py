@@ -17,7 +17,7 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     name: str
-    role: Optional[UserRole] = UserRole.OPERATOR
+    role: Optional[UserRole] = UserRole.DIGITIZATION_OFFICER
     org_scope: Optional[dict] = None
 
 
@@ -51,7 +51,7 @@ async def register(req: RegisterRequest):
             "id": 1,
             "email": req.email,
             "name": req.name,
-            "role": req.role.value if req.role else UserRole.OPERATOR.value,
+            "role": req.role.value if req.role else UserRole.DIGITIZATION_OFFICER.value,
             "org_scope": req.org_scope
         }
         return user

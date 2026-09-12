@@ -14,7 +14,7 @@ from app.models.extraction import (
     LayoutRegionType, RecordStatus, extracted_record_pages
 )
 from app.models.validation import ValidationRun, ValidationCheck, ValidationConflict, CheckStatus, CheckSeverity
-from app.models.verification import VerificationTask, VerificationAction, Approval, VerificationPriority
+from app.models.verification import VerificationTask, VerificationAction, Approval, VerificationPriority, VerificationStatus, VerificationActionType, ApprovalLevel, ApprovalDecision
 from app.models.record import (
     LandRecord, OwnershipHistory, MutationRecord, RegistrationRecord,
     Parcel, GISReference

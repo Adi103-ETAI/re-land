@@ -27,7 +27,7 @@ class DocumentType(str, enum.Enum):
     TAX_RECEIPT = "tax_receipt"
     OTHER = "other"
 
-class Batch(Base, BaseRecord):
+class Batch(BaseRecord):
     """Group of documents submitted together by an officer."""
     __tablename__ = "batches"
     
@@ -39,7 +39,7 @@ class Batch(Base, BaseRecord):
     created_by = relationship("User", back_populates="batches_created")
     documents = relationship("Document", back_populates="batch", cascade="all, delete-orphan")
 
-class Document(Base, BaseRecord):
+class Document(BaseRecord):
     """Single uploaded source artifact. Immutable once uploaded."""
     __tablename__ = "documents"
     
@@ -57,7 +57,7 @@ class Document(Base, BaseRecord):
     processing_jobs = relationship("ProcessingJob", back_populates="document", cascade="all, delete-orphan")
     extracted_records = relationship("ExtractedRecord", back_populates="document", cascade="all, delete-orphan")
 
-class DocumentPage(Base, BaseRecord):
+class DocumentPage(BaseRecord):
     """One page within a Document."""
     __tablename__ = "document_pages"
     
@@ -72,7 +72,7 @@ class DocumentPage(Base, BaseRecord):
     layout_regions = relationship("LayoutRegion", back_populates="page", cascade="all, delete-orphan")
     extracted_records = relationship("ExtractedRecord", secondary="extracted_record_pages", back_populates="pages")
 
-class DocumentClassification(Base, BaseRecord):
+class DocumentClassification(BaseRecord):
     """AI determination of document properties."""
     __tablename__ = "document_classifications"
     

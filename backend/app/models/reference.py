@@ -22,7 +22,7 @@ class ModelStatus(str, enum.Enum):
     TESTING = "testing"
     ARCHIVED = "archived"
 
-class ReferenceDataSource(Base, BaseRecord):
+class ReferenceDataSource(BaseRecord):
     """External/master dataset used for validation."""
     __tablename__ = "reference_data_sources"
     
@@ -30,11 +30,11 @@ class ReferenceDataSource(Base, BaseRecord):
     data_type = Column(SAEnum(DataSourceType), nullable=False)
     is_synthetic = Column(Boolean, default=False, index=True)  # Critical for prototype transparency
     last_synced_at = Column(String, nullable=True)  # ISO format
-    metadata = Column(String, nullable=True)
+    source_metadata = Column("metadata", String, nullable=True)
     
     gis_references = relationship("GISReference", back_populates="source_dataset")
 
-class ModelVersion(Base, BaseRecord):
+class ModelVersion(BaseRecord):
     """Versioned AI/ML model or prompt/config used at some pipeline stage."""
     __tablename__ = "model_versions"
     
@@ -43,13 +43,13 @@ class ModelVersion(Base, BaseRecord):
     version_tag = Column(String, nullable=False)
     deployed_at = Column(String, nullable=True)  # ISO format
     status = Column(SAEnum(ModelStatus), default=ModelStatus.TESTING)
-    metadata = Column(String, nullable=True)
+    source_metadata = Column("metadata", String, nullable=True)
     
     classifications = relationship("DocumentClassification", back_populates="model")
     ocr_results = relationship("OCRResult", back_populates="model")
     processing_attempts = relationship("ProcessingAttempt", back_populates="model")
 
-class EvaluationDataset(Base, BaseRecord):
+class EvaluationDataset(BaseRecord):
     """Curated ground-truth dataset for measuring accuracy."""
     __tablename__ = "evaluation_datasets"
     
@@ -60,7 +60,7 @@ class EvaluationDataset(Base, BaseRecord):
     
     training_feedbacks = relationship("TrainingFeedback", back_populates="dataset")
 
-class TrainingFeedback(Base, BaseRecord):
+class TrainingFeedback(BaseRecord):
     """Human correction retained as feedback data for future evaluation."""
     __tablename__ = "training_feedbacks"
     

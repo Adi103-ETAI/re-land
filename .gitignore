@@ -31,3 +31,6 @@ backend/.env
 
 # tests / scratch
 test_pipeline*.db
+backend/uvicorn.log
+backend/*.log
+backend/data/sample_*

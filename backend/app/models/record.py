@@ -1,10 +1,10 @@
 """Trusted Land Record and spatial models."""
-from sqlalchemy import Column, String, Integer, Float, ForeignKey, Enum as SAEnum, JSON
+from sqlalchemy import Column, String, Integer, Float, ForeignKey, Enum as SAEnum, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.models.base import Base, BaseRecord
 import enum
 
-class LandRecord(Base, BaseRecord):
+class LandRecord(BaseRecord):
     """Validated, approved, structured representation of a land record."""
     __tablename__ = "land_records"
     
@@ -18,7 +18,7 @@ class LandRecord(Base, BaseRecord):
     registration_records = relationship("RegistrationRecord", back_populates="land_record", cascade="all, delete-orphan")
     parcels = relationship("Parcel", back_populates="land_record", cascade="all, delete-orphan")
 
-class OwnershipHistory(Base, BaseRecord):
+class OwnershipHistory(BaseRecord):
     """Lifecycle event of ownership transfer."""
     __tablename__ = "ownership_histories"
     
@@ -30,7 +30,7 @@ class OwnershipHistory(Base, BaseRecord):
     
     land_record = relationship("LandRecord", back_populates="ownership_histories")
 
-class MutationRecord(Base, BaseRecord):
+class MutationRecord(BaseRecord):
     """Mutation/change record in land ownership."""
     __tablename__ = "mutation_records"
     
@@ -41,7 +41,7 @@ class MutationRecord(Base, BaseRecord):
     
     land_record = relationship("LandRecord", back_populates="mutation_records")
 
-class RegistrationRecord(Base, BaseRecord):
+class RegistrationRecord(BaseRecord):
     """Registration information for the land record."""
     __tablename__ = "registration_records"
     
@@ -52,7 +52,7 @@ class RegistrationRecord(Base, BaseRecord):
     
     land_record = relationship("LandRecord", back_populates="registration_records")
 
-class Parcel(Base, BaseRecord):
+class Parcel(BaseRecord):
     """Spatial/administrative unit a Land Record refers to."""
     __tablename__ = "parcels"
     
@@ -76,7 +76,7 @@ class Parcel(Base, BaseRecord):
         # UniqueConstraint('survey_number', 'tehsil_id', name='uq_survey_tehsil'),
     )
 
-class GISReference(Base, BaseRecord):
+class GISReference(BaseRecord):
     """Link between a Parcel/Survey and its cadastral geometry."""
     __tablename__ = "gis_references"
     
