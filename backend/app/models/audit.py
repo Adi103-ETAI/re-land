@@ -1,39 +1,54 @@
-"""Immutable audit trail models."""
-from sqlalchemy import Column, String, Integer, ForeignKey, Enum as SAEnum, JSON, Text
+"""Immutable audit log models."""
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Enum as SAEnum
+from sqlalchemy.orm import relationship
 from app.models.base import Base, BaseRecord
 import enum
 
-
 class ActionType(str, enum.Enum):
-    RECORD_CREATED = "record_created"
-    RECORD_UPDATED = "record_updated"
-    RECORD_APPROVED = "record_approved"
-    RECORD_REJECTED = "record_rejected"
-    FIELD_CORRECTED = "field_corrected"
-    TASK_ASSIGNED = "task_assigned"
-    TASK_COMPLETED = "task_completed"
-    TASK_ESCALATED = "task_escalATED"
-    REPROCESS_REQUESTED = "reprocess_requested"
-    VERIFICATION_DECISION = "verification_decision"
-
+    UPLOAD = "upload"
+    CLASSIFY = "classify"
+    PROCESS = "process"
+    RETRY = "retry"
+    EXTRACT = "extract"
+    VALIDATE = "validate"
+    CORRECT = "correct"
+    ACCEPT = "accept"
+    REJECT = "reject"
+    ESCALATE = "escalate"
+    APPROVE = "approve"
+    EXPORT = "export"
+    SYNC = "sync"
+    ROLE_CHANGE = "role_change"
+    SCOPE_CHANGE = "scope_change"
+    CONFIG_CHANGE = "config_change"
 
 class EntityType(str, enum.Enum):
-    EXTRACTED_RECORD = "extracted_record"
-    LAND_RECORD = "land_record"
-    RECORD_FIELD = "record_field"
-    VERIFICATION_TASK = "verification_task"
-    APPROVAL = "approval"
+    BATCH = "batch"
+    DOCUMENT = "document"
+    RECORD = "record"
+    USER = "user"
+    CONFIG = "config"
+    VALIDATION = "validation"
 
-
-class AuditEvent(BaseRecord):
-    """Immutable audit log entry. Never updated after creation."""
+class AuditEvent(Base, BaseRecord):
+    """Immutable log entry recording a state-changing action."""
     __tablename__ = "audit_events"
-
-    record_id = Column(Integer, nullable=False, index=True)
-    title = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
-    action_type = Column(SAEnum(ActionType), nullable=False, index=True)
-    entity_type = Column(SAEnum(EntityType), nullable=False)
-    entity_id = Column(Integer, nullable=True)
-    user_id = Column(Integer, nullable=True, index=True)
-    meta = Column(JSON, nullable=True)
+    
+    actor_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    action = Column(SAEnum(ActionType), nullable=False, index=True)
+    entity_type = Column(SAEnum(EntityType), nullable=False, index=True)
+    entity_id = Column(Integer, nullable=False, index=True)
+    previous_value = Column(String, nullable=True)
+    new_value = Column(String, nullable=True)
+    reason = Column(String, nullable=True)
+    source = Column(String, nullable=True)  # Which pipeline stage/UI/API called it
+    approval_level = Column(String, nullable=True)  # AUTO/FIRST/SECOND
+    metadata_json = Column(String, nullable=True)  # Additional structured metadata
+    
+    actor = relationship("User", foreign_keys=[actor_id])
+    
+    # Append-only: no UPDATE or DELETE permitted (enforced at DB permission level)
+    __table_args__ = (
+        # Ensure audit events are never modified
+        {'extend_existing': True}
+    )

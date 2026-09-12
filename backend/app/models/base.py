@@ -1,7 +1,9 @@
 """SQLAlchemy base with PostGIS support."""
+from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import Column, DateTime, String, Integer, Float, JSON
+from sqlalchemy import Column, DateTime, String, Integer, Boolean, Enum, Float, JSON
 from datetime import datetime, timezone
+import enum
 
 class Base(DeclarativeBase):
     pass

@@ -1,51 +1,16 @@
 """OCR and extraction models."""
-from sqlalchemy import Column, String, Integer, Float, ForeignKey, Enum as SAEnum, JSON, Table, UniqueConstraint, DateTime
+from sqlalchemy import Column, String, Integer, Float, Boolean, ForeignKey, Enum as SAEnum, JSON, Table
 from sqlalchemy.orm import relationship
 from app.models.base import Base, BaseRecord
-from datetime import datetime, timezone
 import enum
 
+# Junction table for multi-page records
 extracted_record_pages = Table(
     'extracted_record_pages',
     Base.metadata,
     Column('extracted_record_id', Integer, ForeignKey('extracted_records.id'), primary_key=True),
     Column('page_id', Integer, ForeignKey('document_pages.id'), primary_key=True)
 )
-
-class Document(BaseRecord):
-    __tablename__ = "documents"
-    document_type = Column(String, nullable=True)
-    extracted_records = relationship("ExtractedRecord", back_populates="document")
-
-class DocumentPage(BaseRecord):
-    __tablename__ = "document_pages"
-    document_id = Column(Integer, ForeignKey('documents.id'), nullable=False)
-    extracted_records = relationship("ExtractedRecord", secondary=extracted_record_pages, back_populates="pages")
-    ocr_results = relationship("OCRResult", back_populates="page")
-    layout_regions = relationship("LayoutRegion", back_populates="page")
-    field_evidences = relationship("FieldEvidence", back_populates="page")
-
-class OrganizationUnit(BaseRecord):
-    __tablename__ = "organization_units"
-    name = Column(String, nullable=False)
-    unit_type = Column(String, nullable=True)
-
-class ModelVersion(BaseRecord):
-    __tablename__ = "model_versions"
-    version = Column(String, nullable=False)
-    stage = Column(String, nullable=True)
-
-class Approval(BaseRecord):
-    __tablename__ = "approvals"
-    record_id = Column(Integer, ForeignKey('extracted_records.id'), nullable=False)
-    status = Column(String, nullable=True)
-    record = relationship("ExtractedRecord", back_populates="approvals")
-
-class VerificationTask(BaseRecord):
-    __tablename__ = "verification_tasks"
-    record_id = Column(Integer, ForeignKey('extracted_records.id'), nullable=False)
-    priority = Column(String, nullable=True)
-    record = relationship("ExtractedRecord", back_populates="verification_tasks")
 
 class RecordStatus(str, enum.Enum):
     EXTRACTED = "extracted"
@@ -69,7 +34,8 @@ class LayoutRegionType(str, enum.Enum):
     FOOTER = "footer"
     OTHER = "other"
 
-class OCRResult(BaseRecord):
+class OCRResult(Base, BaseRecord):
+    """Recognized text plus bounding boxes and confidence for a region of a Document Page."""
     __tablename__ = "ocr_results"
     
     page_id = Column(Integer, ForeignKey('document_pages.id'), nullable=False, index=True)
@@ -77,8 +43,8 @@ class OCRResult(BaseRecord):
     recognized_text = Column(String, nullable=False)
     confidence = Column(Float, nullable=False)
     language = Column(String, nullable=True)
-    bounding_box = Column(JSON, nullable=True)
-    engine = Column(String, nullable=False)
+    bounding_box = Column(JSON, nullable=True)  # {ymin, xmin, ymax, xmax} normalized 0-1
+    engine = Column(String, nullable=False)  # e.g., "gemini", "tesseract", "sarvam"
     model_version_id = Column(Integer, ForeignKey('model_versions.id'), nullable=True)
     
     page = relationship("DocumentPage", back_populates="ocr_results")
@@ -86,7 +52,8 @@ class OCRResult(BaseRecord):
     model = relationship("ModelVersion")
     field_evidences = relationship("FieldEvidence", back_populates="ocr_result", cascade="all, delete-orphan")
 
-class LayoutRegion(BaseRecord):
+class LayoutRegion(Base, BaseRecord):
+    """Detected structural region on a page."""
     __tablename__ = "layout_regions"
     
     page_id = Column(Integer, ForeignKey('document_pages.id'), nullable=False, index=True)
@@ -96,11 +63,12 @@ class LayoutRegion(BaseRecord):
     page = relationship("DocumentPage", back_populates="layout_regions")
     ocr_results = relationship("OCRResult", back_populates="region")
 
-class ExtractedRecord(BaseRecord):
+class ExtractedRecord(Base, BaseRecord):
+    """Logical land record instance identified within one or more Document Pages."""
     __tablename__ = "extracted_records"
     
     document_id = Column(Integer, ForeignKey('documents.id'), nullable=False, index=True)
-    document_type = Column(String, nullable=True)
+    document_type = Column(String, nullable=True)  # From DocumentClassification
     status = Column(SAEnum(RecordStatus), default=RecordStatus.EXTRACTED, index=True)
     extraction_confidence = Column(Float, nullable=True)
     validation_score = Column(Float, nullable=True)
@@ -113,7 +81,8 @@ class ExtractedRecord(BaseRecord):
     approvals = relationship("Approval", back_populates="record", cascade="all, delete-orphan")
     land_record = relationship("LandRecord", back_populates="extracted_record", uselist=False, cascade="all, delete-orphan")
 
-class RecordField(BaseRecord):
+class RecordField(Base, BaseRecord):
+    """Single named data point within an Extracted Record."""
     __tablename__ = "record_fields"
     
     extracted_record_id = Column(Integer, ForeignKey('extracted_records.id'), nullable=False, index=True)
@@ -127,13 +96,15 @@ class RecordField(BaseRecord):
     language = Column(String, nullable=True)
     
     record = relationship("ExtractedRecord", back_populates="fields")
-    evidences = relationship("FieldEvidence", back_populates="record_field_ref", cascade="all, delete-orphan")
+    evidences = relationship("FieldEvidence", back_populates="field", cascade="all, delete-orphan")
     
     __table_args__ = (
+        # One field per name per record
         UniqueConstraint('extracted_record_id', 'field_name', name='uq_record_field'),
     )
 
-class FieldEvidence(BaseRecord):
+class FieldEvidence(Base, BaseRecord):
+    """Link from a Record Field back to its source evidence."""
     __tablename__ = "field_evidences"
     
     record_field_id = Column(Integer, ForeignKey('record_fields.id'), nullable=False, index=True)
@@ -141,6 +112,6 @@ class FieldEvidence(BaseRecord):
     page_id = Column(Integer, ForeignKey('document_pages.id'), nullable=False, index=True)
     bounding_box = Column(JSON, nullable=True)
     
-    record_field_ref = relationship("RecordField", back_populates="evidences")
+    field = relationship("RecordField", back_populates="evidences")
     ocr_result = relationship("OCRResult", back_populates="field_evidences")
     page = relationship("DocumentPage")

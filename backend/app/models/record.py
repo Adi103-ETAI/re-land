@@ -1,16 +1,16 @@
 """Trusted Land Record and spatial models."""
 from sqlalchemy import Column, String, Integer, Float, ForeignKey, Enum as SAEnum, JSON
 from sqlalchemy.orm import relationship
-from app.models.base import BaseRecord
+from app.models.base import Base, BaseRecord
 import enum
 
-class LandRecord(BaseRecord):
+class LandRecord(Base, BaseRecord):
     """Validated, approved, structured representation of a land record."""
     __tablename__ = "land_records"
     
     extracted_record_id = Column(Integer, ForeignKey('extracted_records.id'), unique=True, nullable=False)
-    approved_at = Column(String, nullable=False)
-    current_snapshot = Column(JSON, nullable=True)
+    approved_at = Column(String, nullable=False)  # ISO format
+    current_snapshot = Column(JSON, nullable=True)  # Denormalized final field values for read performance
     
     extracted_record = relationship("ExtractedRecord", back_populates="land_record")
     ownership_histories = relationship("OwnershipHistory", back_populates="land_record", cascade="all, delete-orphan")
@@ -18,7 +18,7 @@ class LandRecord(BaseRecord):
     registration_records = relationship("RegistrationRecord", back_populates="land_record", cascade="all, delete-orphan")
     parcels = relationship("Parcel", back_populates="land_record", cascade="all, delete-orphan")
 
-class OwnershipHistory(BaseRecord):
+class OwnershipHistory(Base, BaseRecord):
     """Lifecycle event of ownership transfer."""
     __tablename__ = "ownership_histories"
     
@@ -30,7 +30,7 @@ class OwnershipHistory(BaseRecord):
     
     land_record = relationship("LandRecord", back_populates="ownership_histories")
 
-class MutationRecord(BaseRecord):
+class MutationRecord(Base, BaseRecord):
     """Mutation/change record in land ownership."""
     __tablename__ = "mutation_records"
     
@@ -41,7 +41,7 @@ class MutationRecord(BaseRecord):
     
     land_record = relationship("LandRecord", back_populates="mutation_records")
 
-class RegistrationRecord(BaseRecord):
+class RegistrationRecord(Base, BaseRecord):
     """Registration information for the land record."""
     __tablename__ = "registration_records"
     
@@ -52,25 +52,38 @@ class RegistrationRecord(BaseRecord):
     
     land_record = relationship("LandRecord", back_populates="registration_records")
 
-class Parcel(BaseRecord):
+class Parcel(Base, BaseRecord):
     """Spatial/administrative unit a Land Record refers to."""
     __tablename__ = "parcels"
     
     survey_number = Column(String, nullable=False, index=True)
     khasra_number = Column(String, nullable=True)
+    village_id = Column(Integer, ForeignKey('organization_units.id'), nullable=True)
+    tehsil_id = Column(Integer, ForeignKey('organization_units.id'), nullable=True)
+    district_id = Column(Integer, ForeignKey('organization_units.id'), nullable=True)
     area_hectares = Column(Float, nullable=True)
     land_classification = Column(String, nullable=True)
     land_record_id = Column(Integer, ForeignKey('land_records.id'), nullable=True, index=True)
     
+    village = relationship("OrganizationUnit", foreign_keys=[village_id])
+    tehsil = relationship("OrganizationUnit", foreign_keys=[tehsil_id])
+    district = relationship("OrganizationUnit", foreign_keys=[district_id])
     land_record = relationship("LandRecord", back_populates="parcels")
     gis_references = relationship("GISReference", back_populates="parcel", cascade="all, delete-orphan")
+    
+    __table_args__ = (
+        # Survey number should be unique within a tehsil
+        # UniqueConstraint('survey_number', 'tehsil_id', name='uq_survey_tehsil'),
+    )
 
-class GISReference(BaseRecord):
+class GISReference(Base, BaseRecord):
     """Link between a Parcel/Survey and its cadastral geometry."""
     __tablename__ = "gis_references"
     
     parcel_id = Column(Integer, ForeignKey('parcels.id'), nullable=False, index=True)
-    geometry = Column(JSON, nullable=True)
-    source = Column(String, nullable=False)
+    geometry = Column(JSON, nullable=True)  # GeoJSON format for PostGIS compatibility
+    source = Column(String, nullable=False)  # "real_cadastral" or "synthetic"
+    source_dataset_id = Column(Integer, ForeignKey('reference_data_sources.id'), nullable=True)
     
     parcel = relationship("Parcel", back_populates="gis_references")
+    source_dataset = relationship("ReferenceDataSource")
