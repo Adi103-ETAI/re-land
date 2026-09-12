@@ -3,19 +3,23 @@ import Link from "next/link";
 export default function Landing() {
   return (
     <div className="min-h-screen bg-[var(--surface-page)]">
-      {/* Sarvam-style hero mesh: saffron → mauve → periwinkle */}
+      {/* Navigation */}
       <nav className="sticky top-0 z-50 flex items-center justify-between px-12 py-5 bg-[rgba(252,252,252,0.85)] backdrop-blur-md border-b border-[var(--border-hairline)]">
         <div className="flex items-center gap-2.5 font-extrabold text-lg tracking-tight text-[var(--ink-800)]">
           <span className="w-2.5 h-2.5 rounded-[3px] bg-gradient-to-br from-[var(--saffron-600)] to-[var(--indigo-500)]" /> LANDLENS
         </div>
         <div className="hidden md:flex gap-8 text-sm font-medium text-[var(--gray-600)]">
+          <a href="#features" className="hover:text-[var(--ink-800)]">Features</a>
           <a href="#integration" className="hover:text-[var(--ink-800)]">Integration</a>
           <a href="#security" className="hover:text-[var(--ink-800)]">Security</a>
         </div>
-        <Link href="/dashboard" className="btn btn-ghost btn-sm">Officer login</Link>
+        <div className="flex gap-3">
+          <Link href="/login" className="btn btn-ghost btn-sm">Officer Login</Link>
+          <Link href="/signup" className="btn btn-teal btn-sm">Register</Link>
+        </div>
       </nav>
 
-      {/* Hero with Sarvam grain + mesh */}
+      {/* Hero */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0" style={{
           background: `radial-gradient(800px 400px at 50% 0%, var(--saffron-300) 0%, transparent 60%), linear-gradient(180deg, #FFF7ED 0%, #FDF2E8 20%, var(--peri-100) 55%, var(--surface-page) 100%)`
@@ -32,12 +36,38 @@ export default function Landing() {
             AI-powered digitization, validation and verification of India&apos;s legacy land records — from a faded 1962 register to a verified digital record, with a human in the loop wherever it matters.
           </p>
           <div className="flex gap-3.5 justify-center mt-8 flex-wrap">
-            <Link href="/upload" className="btn btn-teal">Start digitizing</Link>
-            <a href="#integration" className="btn btn-ghost">Learn more</a>
+            <Link href="/signup" className="btn btn-teal">Create Account</Link>
+            <Link href="/login" className="btn btn-ghost">Officer Login</Link>
+            <a href="#features" className="btn btn-ghost">Learn more</a>
           </div>
         </div>
       </section>
 
+      {/* Features */}
+      <section id="features" className="max-w-[1160px] mx-auto px-12 py-24">
+        <div className="text-center mb-12">
+          <h2 className="font-[var(--font-serif)] text-3xl text-[var(--ink-900)] mb-3">Intelligent Land Record Platform</h2>
+          <p className="text-[var(--gray-600)] max-w-[600px] mx-auto">End-to-end digitization, validation and verification with full audit trail</p>
+        </div>
+        <div className="grid md:grid-cols-3 gap-6">
+          {[
+            {icon: "📄", title: "Document Ingestion", desc: "Bulk upload with auto-classification by document type, language and format"},
+            {icon: "🤖", title: "AI Extraction", desc: "OCR + VLM pipeline for printed and handwritten text across multiple Indian languages"},
+            {icon: "✓", title: "Validation Engine", desc: "Business rules, duplicate detection, GIS/cadastral checks with risk scoring"},
+            {icon: "👤", title: "Human Verification", desc: "Exception-driven review workflow for low-confidence or conflicting records"},
+            {icon: "🗺️", title: "GIS Integration", desc: "Parcel visualization and spatial validation against cadastral maps"},
+            {icon: "📊", title: "Analytics & Audit", desc: "Real-time dashboards and immutable audit trail for every action"},
+          ].map(({icon, title, desc}) => (
+            <div key={title} className="card p-6">
+              <div className="text-3xl mb-3">{icon}</div>
+              <h3 className="font-semibold text-[var(--ink-900)] mb-2">{title}</h3>
+              <p className="text-sm text-[var(--gray-600)]">{desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Integration */}
       <section id="integration" className="max-w-[1160px] mx-auto px-12 py-24">
         <div className="max-w-[640px] mb-12">
           <div className="eyebrow mb-3 text-[var(--saffron-600)]">Integration</div>
@@ -59,6 +89,7 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Security */}
       <section id="security" className="max-w-[1160px] mx-auto px-12 pb-24">
         <div className="max-w-[640px] mb-12">
           <div className="eyebrow mb-3 text-[var(--saffron-600)]">Security & Access</div>
@@ -80,12 +111,16 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* CTA */}
       <div className="max-w-[1160px] mx-auto px-12 pb-24">
         <div className="rounded-3xl px-12 py-14 text-center text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, var(--ink-800) 0%, #3C415B 60%, #657099 100%)` }}>
           <div className="absolute inset-0 opacity-20" style={{ backgroundImage: `radial-gradient(600px 300px at 30% 0%, var(--saffron-600), transparent)` }} />
           <h2 className="relative font-[var(--font-serif)] text-3xl mb-2">See the full digitization workflow in action.</h2>
           <p className="relative text-[#DCE5FE] mb-6">From a scanned 1962 register to a verified digital record, in one guided walkthrough.</p>
-          <Link href="/upload" className="relative btn bg-white text-[var(--ink-800)] hover:bg-[var(--surface-raised)]">Start digitizing</Link>
+          <div className="relative flex gap-3 justify-center">
+            <Link href="/signup" className="btn bg-white text-[var(--ink-800)] hover:bg-[var(--surface-raised)]">Create Account</Link>
+            <Link href="/login" className="btn bg-white/20 text-white hover:bg-white/30">Officer Login</Link>
+          </div>
         </div>
       </div>
 
