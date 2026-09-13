@@ -1,19 +1,26 @@
 """User authentication models for LANDLENS.
 
-The unified identity model lives in app.models.user (User / UserRole).
-This module keeps the auth-session tables and re-exports the shared classes
-so `from app.models.auth import User` keeps working for the auth service.
+This module is the canonical home of the ``User`` / ``UserRole`` identity
+model (used by the auth service and API). ``app.models.user`` re-exports
+them for import compatibility — defining a second ``User`` with the same
+``users`` table name corrupts the SQLAlchemy registry.
 """
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Enum as SAEnum, JSON
 from sqlalchemy.orm import relationship
-
-from app.models.base import BaseRecord
-from app.models.user import User, UserRole  # unified identity model — re-export
-
-__all__ = ["User", "UserRole", "AuthProvider", "Session", "RefreshToken"]
+from datetime import datetime, timezone
+from app.models.base import Base, BaseRecord
+import enum
 
 
-class AuthProvider(str):
+class UserRole(str, enum.Enum):
+    OPERATOR = "operator"  # Digitization Officer
+    VERIFIER = "verifier"  # Verification Officer
+    SENIOR = "senior"      # Senior/Supervisory Officer
+    AUDITOR = "auditor"
+    ADMIN = "admin"
+
+
+class AuthProvider(str, enum.Enum):
     LOCAL = "local"
     # Future: GOOGLE, GOVERNMENT_SSO
 
@@ -21,7 +28,7 @@ class AuthProvider(str):
 class User(Base, BaseRecord):
     """Officer user account."""
     __tablename__ = "users"
-    
+
     email = Column(String(255), unique=True, index=True, nullable=False)
     name = Column(String(255), nullable=False)
     password_hash = Column(String(255), nullable=False)
@@ -30,7 +37,7 @@ class User(Base, BaseRecord):
     is_active = Column(Boolean, default=True)
     last_login = Column(DateTime(timezone=True), nullable=True)
     provider = Column(SAEnum(AuthProvider), default=AuthProvider.LOCAL)
-    
+
     # Relationships (explicit foreign_keys — several tables reference users.id)
     verification_tasks_assigned = relationship(
         "VerificationTask", foreign_keys="VerificationTask.assigned_to_id",
@@ -57,7 +64,7 @@ class Session(Base, BaseRecord):
     user = relationship("User")
 
 
-class RefreshToken(BaseRecord):
+class RefreshToken(Base, BaseRecord):
     """Refresh token for session renewal."""
     __tablename__ = "refresh_tokens"
 

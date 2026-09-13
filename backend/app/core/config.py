@@ -62,3 +62,11 @@ ENABLE_VLM = os.getenv("ENABLE_VLM", "true").lower() == "true"  # false = light 
 
 # Upload guardrails
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "15"))
+
+# Validation & auto-approval tuning
+SCORE_WEIGHTS = {
+    "areaMismatch": int(os.getenv("SCORE_W_AREA", "6")),
+    "duplicate": int(os.getenv("SCORE_W_DUP", "4")),
+    "lowConfField": int(os.getenv("SCORE_W_CONF", "2")),
+}
+AUTO_APPROVE_SCORE = int(os.getenv("AUTO_APPROVE_SCORE", "90"))

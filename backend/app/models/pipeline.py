@@ -26,7 +26,7 @@ class StageStatus(str, enum.Enum):
     RETRYING = "retrying"
     FAILED = "failed"
 
-class ProcessingJob(BaseRecord):
+class ProcessingJob(Base, BaseRecord):
     """Asynchronous unit of work carrying a Document through pipeline stages."""
     __tablename__ = "processing_jobs"
     
@@ -39,7 +39,7 @@ class ProcessingJob(BaseRecord):
     document = relationship("Document", back_populates="processing_jobs")
     stages = relationship("ProcessingStage", back_populates="job", cascade="all, delete-orphan")
 
-class ProcessingStage(BaseRecord):
+class ProcessingStage(Base, BaseRecord):
     """One named step of the pipeline with its own status."""
     __tablename__ = "processing_stages"
     
@@ -58,7 +58,7 @@ class ProcessingStage(BaseRecord):
         UniqueConstraint('job_id', 'stage_name', name='uq_job_stage'),
     )
 
-class ProcessingAttempt(BaseRecord):
+class ProcessingAttempt(Base, BaseRecord):
     """One try at a Processing Stage. Retries create new attempts."""
     __tablename__ = "processing_attempts"
     

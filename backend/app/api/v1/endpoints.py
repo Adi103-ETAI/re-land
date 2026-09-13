@@ -54,7 +54,7 @@ async def upload_job(
 async def _run_pipeline_db(job_id: int, session_factory):
     """Drive the job through all pipeline stages asynchronously."""
     try:
-        from app.services.pipeline.runner import PipelineOrchestrator
+        from app.services.pipeline_db import PipelineOrchestrator
         orchestrator = PipelineOrchestrator(session_factory)
         await orchestrator.process_document(job_id)
     except Exception:

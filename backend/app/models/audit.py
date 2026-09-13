@@ -30,7 +30,7 @@ class EntityType(str, enum.Enum):
     CONFIG = "config"
     VALIDATION = "validation"
 
-class AuditEvent(BaseRecord):
+class AuditEvent(Base, BaseRecord):
     """Immutable log entry recording a state-changing action."""
     __tablename__ = "audit_events"
     

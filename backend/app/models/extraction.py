@@ -34,7 +34,7 @@ class LayoutRegionType(str, enum.Enum):
     FOOTER = "footer"
     OTHER = "other"
 
-class OCRResult(BaseRecord):
+class OCRResult(Base, BaseRecord):
     """Recognized text plus bounding boxes and confidence for a region of a Document Page."""
     __tablename__ = "ocr_results"
     
@@ -52,7 +52,7 @@ class OCRResult(BaseRecord):
     model = relationship("ModelVersion")
     field_evidences = relationship("FieldEvidence", back_populates="ocr_result", cascade="all, delete-orphan")
 
-class LayoutRegion(BaseRecord):
+class LayoutRegion(Base, BaseRecord):
     """Detected structural region on a page."""
     __tablename__ = "layout_regions"
     
@@ -63,7 +63,7 @@ class LayoutRegion(BaseRecord):
     page = relationship("DocumentPage", back_populates="layout_regions")
     ocr_results = relationship("OCRResult", back_populates="region")
 
-class ExtractedRecord(BaseRecord):
+class ExtractedRecord(Base, BaseRecord):
     """Logical land record instance identified within one or more Document Pages."""
     __tablename__ = "extracted_records"
     
@@ -81,7 +81,7 @@ class ExtractedRecord(BaseRecord):
     approvals = relationship("Approval", back_populates="record", cascade="all, delete-orphan")
     land_record = relationship("LandRecord", back_populates="extracted_record", uselist=False, cascade="all, delete-orphan")
 
-class RecordField(BaseRecord):
+class RecordField(Base, BaseRecord):
     """Single named data point within an Extracted Record."""
     __tablename__ = "record_fields"
     
@@ -103,7 +103,7 @@ class RecordField(BaseRecord):
         UniqueConstraint('extracted_record_id', 'field_name', name='uq_record_field'),
     )
 
-class FieldEvidence(BaseRecord):
+class FieldEvidence(Base, BaseRecord):
     """Link from a Record Field back to its source evidence."""
     __tablename__ = "field_evidences"
     

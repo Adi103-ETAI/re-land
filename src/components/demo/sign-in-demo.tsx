@@ -22,11 +22,8 @@ const sampleTestimonials: Testimonial[] = [
 ];
 
 const SignInPageDemo = () => {
-  const handleSignIn = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const data = Object.fromEntries(formData.entries());
-    console.log("Sign In submitted:", data);
+  const handleSignIn = (email: string, password: string) => {
+    console.log("Sign In submitted:", { email, password });
     alert(`Sign In Submitted! Check the browser console for form data.`);
   };
 

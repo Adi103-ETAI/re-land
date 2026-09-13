@@ -4,7 +4,7 @@ from sqlalchemy.orm import relationship
 from app.models.base import Base, BaseRecord
 import enum
 
-class LandRecord(BaseRecord):
+class LandRecord(Base, BaseRecord):
     """Validated, approved, structured representation of a land record."""
     __tablename__ = "land_records"
     
@@ -18,7 +18,7 @@ class LandRecord(BaseRecord):
     registration_records = relationship("RegistrationRecord", back_populates="land_record", cascade="all, delete-orphan")
     parcels = relationship("Parcel", back_populates="land_record", cascade="all, delete-orphan")
 
-class OwnershipHistory(BaseRecord):
+class OwnershipHistory(Base, BaseRecord):
     """Lifecycle event of ownership transfer."""
     __tablename__ = "ownership_histories"
     
@@ -30,7 +30,7 @@ class OwnershipHistory(BaseRecord):
     
     land_record = relationship("LandRecord", back_populates="ownership_histories")
 
-class MutationRecord(BaseRecord):
+class MutationRecord(Base, BaseRecord):
     """Mutation/change record in land ownership."""
     __tablename__ = "mutation_records"
     
@@ -41,7 +41,7 @@ class MutationRecord(BaseRecord):
     
     land_record = relationship("LandRecord", back_populates="mutation_records")
 
-class RegistrationRecord(BaseRecord):
+class RegistrationRecord(Base, BaseRecord):
     """Registration information for the land record."""
     __tablename__ = "registration_records"
     
@@ -52,7 +52,7 @@ class RegistrationRecord(BaseRecord):
     
     land_record = relationship("LandRecord", back_populates="registration_records")
 
-class Parcel(BaseRecord):
+class Parcel(Base, BaseRecord):
     """Spatial/administrative unit a Land Record refers to."""
     __tablename__ = "parcels"
     
@@ -76,7 +76,7 @@ class Parcel(BaseRecord):
         # UniqueConstraint('survey_number', 'tehsil_id', name='uq_survey_tehsil'),
     )
 
-class GISReference(BaseRecord):
+class GISReference(Base, BaseRecord):
     """Link between a Parcel/Survey and its cadastral geometry."""
     __tablename__ = "gis_references"
     

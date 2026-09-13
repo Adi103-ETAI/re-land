@@ -37,8 +37,30 @@ from app.models.verification import ApprovalDecision, ApprovalLevel, Verificatio
 
 logger = logging.getLogger(__name__)
 
-engine = create_async_engine(DATABASE_URL, echo=False, future=True)
-SessionFactory = async_sessionmaker(engine, expire_on_commit=False)
+
+def _build_async_url(url: str) -> str:
+    """Derive an async driver URL from the configured DATABASE_URL."""
+    if url.startswith("sqlite+aiosqlite://"):
+        return url
+    if url.startswith("sqlite://"):
+        return url.replace("sqlite://", "sqlite+aiosqlite://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return url
+
+
+_engine = None
+
+
+def get_engine(url: str | None = None):
+    """Lazily create the async engine (avoids import-time DB connection)."""
+    global _engine
+    if _engine is None:
+        _engine = create_async_engine(_build_async_url(url or DATABASE_URL), echo=False, future=True)
+    return _engine
+
+
+SessionFactory = async_sessionmaker(get_engine(), expire_on_commit=False)
 
 _initialized = False
 
@@ -55,7 +77,7 @@ async def init_db() -> None:
     global _initialized
     if _initialized:
         return
-    async with engine.begin() as conn:
+    async with get_engine().begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     async with SessionFactory() as session:
         await _seed(session)
@@ -65,57 +87,24 @@ async def init_db() -> None:
 
 
 async def _seed(session) -> None:
-    unit = (await session.execute(
-        select(OrganizationUnit).where(OrganizationUnit.name == "Pune District")
-    )).scalar_one_or_none()
-    if unit is None:
-        unit = OrganizationUnit(name="Pune District", level=OrgLevel.DISTRICT)
-        session.add(unit)
-        await session.flush()
+    """Seed demo officers (canonical schema) + the shared UI-uploads batch."""
+    from app.services.auth.service import seed_default_users
+    await seed_default_users(session)
 
     operator = (await session.execute(
         select(User).where(User.email == "operator@landlens.local")
     )).scalar_one_or_none()
-    if operator is None:
-        operator = User(
-            username="operator",
-            email="operator@landlens.local",
-            hashed_password=AuthService._hash_password("operator123"),
-            role=UserRole.DIGITIZATION_OFFICER,
-            org_unit_id=unit.id,
-        )
-        session.add(operator)
-        await session.flush()
-
-    verifier = (await session.execute(
-        select(User).where(User.email == "verifier@landlens.local")
-    )).scalar_one_or_none()
-    if verifier is None:
-        verifier = User(
-            username="verifier",
-            email="verifier@landlens.local",
-            hashed_password=AuthService._hash_password("verifier123"),
-            role=UserRole.VERIFICATION_OFFICER,
-            org_unit_id=unit.id,
-        )
-        session.add(verifier)
-        await session.flush()
-
-    # One-time upgrade: rows seeded by the legacy static-salt hash cannot pass
-    # the salted verifier — re-hash them so demo officers can log in via /auth.
-    for user, password in ((operator, "operator123"), (verifier, "verifier123")):
-        if user is not None and "$" not in (user.hashed_password or ""):
-            user.hashed_password = AuthService._hash_password(password)
 
     batch = (await session.execute(
         select(Batch).where(Batch.original_filename == "ui-uploads")
     )).scalar_one_or_none()
-    if batch is None:
+    if batch is None and operator is not None:
         batch = Batch(original_filename="ui-uploads", created_by_id=operator.id)
         session.add(batch)
         await session.flush()
 
-    SEED.update(operator_id=operator.id, verifier_id=verifier.id, batch_id=batch.id)
+    if operator is not None:
+        SEED.update(operator_id=operator.id, batch_id=batch.id if batch else None)
 
 
 async def start_job(document_id: int, factory=None) -> ProcessingJob:

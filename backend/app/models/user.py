@@ -24,7 +24,7 @@ class OrgLevel(str, enum.Enum):
     TEHSIL = "tehsil"
     VILLAGE = "village"
 
-class OrganizationUnit(BaseRecord):
+class OrganizationUnit(Base, BaseRecord):
     """Geographic/administrative unit (State -> District -> Tehsil -> Village)."""
     __tablename__ = "organization_units"
     
@@ -33,7 +33,7 @@ class OrganizationUnit(BaseRecord):
     parent_id = Column(Integer, ForeignKey('organization_units.id'), nullable=True, index=True)
     parent = relationship("OrganizationUnit", remote_side="OrganizationUnit.id", backref="children")
 
-class RolePermission(BaseRecord):
+class RolePermission(Base, BaseRecord):
     """Permissions tied to roles."""
     __tablename__ = "role_permissions"
     
