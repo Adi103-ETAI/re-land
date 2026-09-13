@@ -1,7 +1,15 @@
 from pydantic import BaseModel
 
 class BBox(BaseModel):
-    x: float; y: float; w: float; h: float
+    """Normalized 0-1 box (ymin/xmin/ymax/xmax) or pixel box (x/y/w/h)."""
+    ymin: float | None = None
+    xmin: float | None = None
+    ymax: float | None = None
+    xmax: float | None = None
+    x: float | None = None
+    y: float | None = None
+    w: float | None = None
+    h: float | None = None
 
 class FieldWithConfidence(BaseModel):
     key: str          # surveyNo, khataNo, ownerName, area, village, tehsil, district, classification, mutationDate

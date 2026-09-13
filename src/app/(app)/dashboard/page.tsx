@@ -1,196 +1,287 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase, getSession } from "@/lib/supabase";
-import type { Profile, UserRole } from "@/lib/supabase";
+import {
+  ArrowUpRight,
+  BrainCircuit,
+  CheckCircle2,
+  FileText,
+  History,
+  Inbox,
+  ShieldAlert,
+  ShieldCheck,
+  Upload,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState, SetupNotice } from "@/components/system/states";
+import { useRequireAuth } from "@/hooks/use-require-auth";
+import { getUserProfile, type Profile } from "@/lib/supabase";
+import { getDashboardStats, listAuditLogs, listRecords, type AuditLogRow, type DashboardStats, type RecordRow } from "@/lib/db";
 
-const ROLES: { value: UserRole; label: string; color: string }[] = [
-  { value: "operator", label: "Field Operator", color: "bg-blue-100 text-blue-800" },
-  { value: "verifier", label: "Verifier", color: "bg-green-100 text-green-800" },
-  { value: "senior", label: "Senior Officer", color: "bg-yellow-100 text-yellow-800" },
-  { value: "auditor", label: "Auditor", color: "bg-purple-100 text-purple-800" },
-  { value: "admin", label: "Administrator", color: "bg-red-100 text-red-800" },
-];
+const ACTIVITY_META: Record<string, { icon: typeof FileText; ok: boolean }> = {
+  RECORD_CREATED: { icon: FileText, ok: true },
+  EXTRACTION_COMPLETED: { icon: BrainCircuit, ok: true },
+  VERIFICATION_ACCEPTED: { icon: ShieldCheck, ok: true },
+  VERIFICATION_REJECTED: { icon: ShieldAlert, ok: false },
+  VALIDATION_FAILED: { icon: ShieldAlert, ok: false },
+};
 
 export default function DashboardPage() {
-  const [user, setUser] = useState<any>(null);
+  const { ready, session, configured } = useRequireAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [stats, setStats] = useState({
-    totalDocuments: 0,
-    processingJobs: 0,
-    pendingVerification: 0,
-    highRiskRecords: 0,
-  });
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [activity, setActivity] = useState<AuditLogRow[]>([]);
+  const [latestRecord, setLatestRecord] = useState<RecordRow | null>(null);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const init = async () => {
-      const session = await getSession();
-      if (!session?.user) {
-        window.location.href = "/login";
-        return;
-      }
-
-      setUser(session.user);
-
-      // Fetch profile
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
-      
-      setProfile(profileData as Profile);
-
-      // Fetch stats (in production, this would query actual backend)
-      setStats({
-        totalDocuments: 24,
-        processingJobs: 3,
-        pendingVerification: 12,
-        highRiskRecords: 2,
-      });
-
+  const load = useCallback(async () => {
+    if (!session?.user) return;
+    setLoading(true);
+    setError("");
+    try {
+      const [p, s, logs, recs] = await Promise.all([
+        getUserProfile(session.user.id),
+        getDashboardStats(),
+        listAuditLogs(5),
+        listRecords(1),
+      ]);
+      setProfile(p);
+      setStats(s);
+      setActivity(logs);
+      setLatestRecord(recs[0] ?? null);
+    } catch (e: any) {
+      setError(e?.message || "Could not load dashboard data");
+    } finally {
       setLoading(false);
-    };
+    }
+  }, [session?.user?.id]);
 
-    init();
+  useEffect(() => {
+    if (ready && session) load();
+  }, [ready, session, load]);
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!session) {
-        window.location.href = "/login";
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.href = "/";
-  };
-
-  if (loading) {
+  if (!configured) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--surface-page)]">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-[var(--teal-600)] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-[var(--gray-600)]">Loading dashboard...</p>
+      <div>
+        <PageHeader title="Dashboard" description="Your land record digitization overview." />
+        <SetupNotice what="Everything on this page" />
+      </div>
+    );
+  }
+  if (!ready || loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-9 w-72" />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-32 rounded-2xl" />
+          ))}
         </div>
+        <Skeleton className="h-72 rounded-2xl" />
       </div>
     );
   }
 
-  const currentRole = ROLES.find(r => r.value === profile?.role);
+  const statsCards = [
+    {
+      label: "Documents",
+      value: stats?.totalDocuments ?? 0,
+      icon: FileText,
+      sub: `${stats?.processingJobs ?? 0} processing now`,
+      tone: "text-foreground",
+    },
+    {
+      label: "Records extracted",
+      value: (stats?.validationCounts ?? {})["safe"] + (stats?.validationCounts ?? {})["review"] + (stats?.validationCounts ?? {})["high_risk"] + (stats?.validationCounts ?? {})["pending"] || 0,
+      icon: BrainCircuit,
+      sub: "across all uploads",
+      tone: "text-foreground",
+    },
+    {
+      label: "Pending verification",
+      value: stats?.pendingVerification ?? 0,
+      icon: CheckCircle2,
+      sub: "waiting on an officer",
+      tone: "text-foreground",
+    },
+    {
+      label: "High-risk records",
+      value: stats?.highRiskRecords ?? 0,
+      icon: ShieldAlert,
+      sub: "needs attention",
+      tone: "text-destructive",
+    },
+  ];
+
+  const total = Math.max(1, (stats?.validationCounts ?? {})["pending"] + (stats?.validationCounts ?? {})["safe"] + (stats?.validationCounts ?? {})["review"] + (stats?.validationCounts ?? {})["high_risk"]);
+  const pipeline = [
+    { stage: "Uploaded", count: stats?.totalDocuments ?? 0, pct: 100 },
+    { stage: "Extracted", count: (stats?.validationCounts ?? {})["pending"] ?? 0, pct: Math.round((((stats?.validationCounts ?? {})["pending"] ?? 0) / total) * 100) },
+    { stage: "Accepted", count: stats?.completedRecords ?? 0, pct: Math.round((((stats?.completedRecords ?? 0) / total) * 100)) },
+  ];
 
   return (
-    <div className="min-h-screen bg-[var(--surface-page)]">
-      {/* Header */}
-      <header className="bg-white border-b border-[var(--border-hairline)] px-8 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center gap-2 font-extrabold text-lg text-[var(--ink-800)]">
-              <span className="w-2.5 h-2.5 rounded-[3px] bg-gradient-to-br from-[var(--saffron-600)] to-[var(--indigo-500)]" />
-              LANDLENS
-            </Link>
-            
-            <nav className="hidden md:flex gap-6 text-sm">
-              <Link href="/dashboard" className="font-medium text-[var(--ink-800)]">Dashboard</Link>
-              <Link href="/upload" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Upload</Link>
-              <Link href="/records" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Records</Link>
-              <Link href="/verification" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Verification</Link>
-              <Link href="/audit" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Audit</Link>
-            </nav>
-          </div>
+    <div>
+      <PageHeader
+        title={`Welcome back, ${profile?.name || "Officer"}`}
+        description="Here's your land record digitization overview for today."
+        actions={
+          <Link href="/upload">
+            <Button className="rounded-full shadow-md shadow-primary/20">
+              <Upload className="h-4 w-4" /> Upload document
+            </Button>
+          </Link>
+        }
+      />
 
-          <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-              <div className="text-sm font-medium text-[var(--ink-800)]">{profile?.name || user?.email?.split("@")[0]}</div>
-              {currentRole && (
-                <span className={`text-xs px-2 py-0.5 rounded-full ${currentRole.color}`}>
-                  {currentRole.label}
+      {error && (
+        <div className="mb-5 rounded-2xl border border-destructive/30 bg-[var(--destructive-soft)] px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      {/* Stats */}
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {statsCards.map(({ label, value, icon: Icon, sub, tone }) => (
+          <Card key={label} className="border-border/80 transition-all hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/5">
+            <CardContent className="p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="grid h-9 w-9 place-items-center rounded-xl bg-accent text-accent-foreground">
+                  <Icon className="h-4.5 w-4.5" />
                 </span>
-              )}
-            </div>
-            <button
-              onClick={handleLogout}
-              className="btn btn-ghost btn-sm"
-            >
-              Sign Out
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-8 py-8">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-[var(--font-serif)] text-[var(--ink-900)] mb-2">
-            Welcome back, {profile?.name || user?.email?.split("@")[0]}!
-          </h1>
-          <p className="text-[var(--gray-600)]">
-            Here&apos;s your land record digitization overview for today.
-          </p>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {[
-            { label: "Total Documents", value: stats.totalDocuments, icon: "📄", color: "bg-blue-50" },
-            { label: "Processing Jobs", value: stats.processingJobs, icon: "⚙️", color: "bg-yellow-50" },
-            { label: "Pending Verification", value: stats.pendingVerification, icon: "✓", color: "bg-green-50" },
-            { label: "High Risk Records", value: stats.highRiskRecords, icon: "⚠️", color: "bg-red-50" },
-          ].map(({ label, value, icon, color }) => (
-            <div key={label} className={`card !p-5 ${color}`}>
-              <div className="text-2xl mb-2">{icon}</div>
-              <div className="text-2xl font-bold text-[var(--ink-900)]">{value}</div>
-              <div className="text-sm text-[var(--gray-600)]">{label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Quick Actions */}
-        <div className="card !p-6 mb-8">
-          <h2 className="font-semibold text-[var(--ink-900)] mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Link href="/upload" className="btn btn-teal">
-              Upload Document
-            </Link>
-            <Link href="/verification" className="btn btn-ghost">
-              Review Queue
-            </Link>
-            <Link href="/records" className="btn btn-ghost">
-              View Records
-            </Link>
-            <Link href="/audit" className="btn btn-ghost">
-              Audit Trail
-            </Link>
-          </div>
-        </div>
-
-        {/* Recent Activity */}
-        <div className="card !p-6">
-          <h2 className="font-semibold text-[var(--ink-900)] mb-4">Recent Activity</h2>
-          <div className="space-y-3">
-            {[
-              { action: "Document uploaded", detail: "Revenue Survey No. 45.pdf", time: "2 minutes ago", icon: "📄" },
-              { action: "Extraction completed", detail: "Record #12847 - Confidence: 94%", time: "15 minutes ago", icon: "✓" },
-              { action: "Verification pending", detail: "High-risk record #12850 flagged", time: "1 hour ago", icon: "⚠️" },
-              { action: "Record approved", detail: "Khasra No. 234 by Verifier A", time: "2 hours ago", icon: "✅" },
-            ].map((item, i) => (
-              <div key={i} className="flex items-center gap-4 py-3 border-b border-[var(--border-hairline)] last:border-0">
-                <span className="text-xl">{item.icon}</span>
-                <div className="flex-1">
-                  <div className="font-medium text-[var(--ink-800)]">{item.action}</div>
-                  <div className="text-sm text-[var(--gray-600)]">{item.detail}</div>
-                </div>
-                <div className="text-xs text-[var(--gray-500)]">{item.time}</div>
+                <Icon className="h-4 w-4 text-muted-foreground/40" />
               </div>
-            ))}
-          </div>
+              <div className={`font-mono text-3xl font-bold ${tone}`}>{value}</div>
+              <div className="mt-1 text-[13px] font-medium">{label}</div>
+              <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+        {/* Pipeline */}
+        <div className="space-y-5">
+          <Card className="border-border/80">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Digitization pipeline</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {pipeline.map((p) => (
+                <div key={p.stage}>
+                  <div className="mb-1.5 flex justify-between text-sm">
+                    <span className="text-muted-foreground">{p.stage}</span>
+                    <span className="font-mono font-semibold">{p.count}</span>
+                  </div>
+                  <Progress value={p.pct} className="h-2" />
+                </div>
+              ))}
+              <div className="flex flex-wrap gap-2.5 pt-2">
+                <Link href="/upload"><Button size="sm" className="rounded-full">Upload document</Button></Link>
+                <Link href="/verification"><Button size="sm" variant="outline" className="rounded-full">Review queue</Button></Link>
+                <Link href="/records"><Button size="sm" variant="outline" className="rounded-full">View records</Button></Link>
+                <Link href="/audit"><Button size="sm" variant="outline" className="rounded-full">Audit trail</Button></Link>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-      </main>
+
+        {/* Latest record + activity */}
+        <div className="space-y-5">
+          {latestRecord ? (
+            <Card className="border-border/80 bg-sidebar text-sidebar-foreground">
+              <CardContent className="p-5">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-[11px] font-bold tracking-wide text-sidebar-foreground/50">LATEST RECORD</span>
+                  <Badge className="rounded-md bg-primary px-2 py-0.5 text-[10px] font-bold">
+                    {latestRecord.verification_status.toUpperCase()}
+                  </Badge>
+                </div>
+                <div className="font-mono text-lg font-bold">{latestRecord.record_code ?? latestRecord.id.slice(0, 8)}</div>
+                <p className="mb-4 text-xs text-sidebar-foreground/60">
+                  Survey {latestRecord.survey_no ?? "—"} · {latestRecord.village ?? "—"}
+                </p>
+                <div className="grid grid-cols-2 gap-3 text-[13px]">
+                  {[
+                    ["Owner", latestRecord.owner_name],
+                    ["Survey no.", latestRecord.survey_no],
+                    ["Village", latestRecord.village],
+                    ["Area", latestRecord.area_detected != null ? `${latestRecord.area_detected} Ha` : "—"],
+                  ].map(([k, v]) => (
+                    <div key={k} className="rounded-xl bg-white/[0.06] px-3 py-2">
+                      <div className="text-[10px] text-sidebar-foreground/50">{k}</div>
+                      <div className="truncate font-mono font-semibold">{v || "—"}</div>
+                    </div>
+                  ))}
+                </div>
+                <Link href={`/records/${latestRecord.id}`}>
+                  <Button size="sm" variant="secondary" className="mt-4 w-full rounded-full">
+                    Open record <ArrowUpRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          ) : (
+            <EmptyState
+              icon={Inbox}
+              title="No records yet"
+              description="Upload your first land record document to start the digitization pipeline."
+              action={
+                <Link href="/upload">
+                  <Button size="sm" className="rounded-full">Upload document</Button>
+                </Link>
+              }
+            />
+          )}
+
+          <Card className="border-border/80">
+            <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <History className="h-4 w-4 text-muted-foreground" /> Recent activity
+              </CardTitle>
+              <Link href="/audit" className="text-xs font-medium text-primary hover:underline">
+                View all
+              </Link>
+            </CardHeader>
+            <CardContent className="space-y-1 pt-1">
+              {activity.length === 0 ? (
+                <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                  No activity yet — actions will appear here as the team works.
+                </p>
+              ) : (
+                activity.map((a) => {
+                  const meta = ACTIVITY_META[a.action] ?? { icon: FileText, ok: true };
+                  const Icon = meta.icon;
+                  return (
+                    <div key={a.id} className="flex items-start gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-muted/60">
+                      {meta.ok ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]" />
+                      ) : (
+                        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-semibold leading-tight">{a.action.replace(/_/g, " ")}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {a.entity_type} · {a.entity_id ?? "—"}
+                        </div>
+                      </div>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {new Date(a.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

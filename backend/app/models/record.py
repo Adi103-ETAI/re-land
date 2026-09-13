@@ -1,5 +1,5 @@
 """Trusted Land Record and spatial models."""
-from sqlalchemy import Column, String, Integer, Float, ForeignKey, Enum as SAEnum, JSON
+from sqlalchemy import Column, String, Integer, Float, ForeignKey, Enum as SAEnum, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.models.base import Base, BaseRecord
 import enum

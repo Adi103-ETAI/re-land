@@ -1,299 +1,322 @@
 "use client";
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { supabase } from "@/lib/supabase";
-import type { Profile } from "@/lib/supabase";
+import { useCallback, useEffect, useState } from "react";
+import { Check, Inbox, Lightbulb, TriangleAlert, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { EmptyState, SetupNotice } from "@/components/system/states";
+import { useRequireAuth } from "@/hooks/use-require-auth";
+import { useToast } from "@/hooks/use-toast";
+import { getSession } from "@/lib/supabase";
+import { listVerificationQueue, resolveVerification, type RecordRow } from "@/lib/db";
 
-interface VerificationItem {
-  id: string;
-  record_id: string;
-  fields: Record<string, any>;
-  confidence_score: number;
-  validation_status: string;
-  verification_status: string;
-  created_at: string;
-}
+const FIELD_LABELS: Record<string, string> = {
+  surveyNo: "Survey number",
+  survey: "Survey number",
+  khataNo: "Khata number",
+  khata: "Khata number",
+  ownerName: "Owner name",
+  owner: "Owner name",
+  village: "Village",
+  tehsil: "Tehsil",
+  district: "District",
+  area: "Area",
+  classification: "Classification",
+  mutationDate: "Mutation date",
+};
 
 export default function VerificationPage() {
-  const [items, setItems] = useState<VerificationItem[]>([]);
+  const { ready, session, configured } = useRequireAuth();
+  const [items, setItems] = useState<RecordRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { toast } = useToast();
 
-  useEffect(() => {
-    const fetchVerification = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        window.location.href = "/login";
-        return;
-      }
-
-      // Fetch profile
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
-      setProfile(profileData as Profile);
-
-      // Mock verification queue (replace with real API)
-      const mockItems: VerificationItem[] = [
-        {
-          id: "v1",
-          record_id: "rec-001",
-          fields: { surveyNo: "45", khataNo: "234", ownerName: "Rajesh Kumar", area: "2.5 acres" },
-          confidence_score: 0.72,
-          validation_status: "review",
-          verification_status: "pending",
-          created_at: "2026-09-12T08:30:00Z",
-        },
-        {
-          id: "v2",
-          record_id: "rec-002",
-          fields: { surveyNo: "46", khataNo: "235", ownerName: "Sita Devi", area: "1.8 acres" },
-          confidence_score: 0.65,
-          validation_status: "high_risk",
-          verification_status: "pending",
-          created_at: "2026-09-12T08:35:00Z",
-        },
-        {
-          id: "v3",
-          record_id: "rec-003",
-          fields: { surveyNo: "47", khataNo: "236", ownerName: "Amit Sharma", area: "3.2 acres" },
-          confidence_score: 0.88,
-          validation_status: "review",
-          verification_status: "pending",
-          created_at: "2026-09-12T08:40:00Z",
-        },
-      ];
-
-      setItems(mockItems);
-      setCurrentId(mockItems[0]?.id || null);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const rows = await listVerificationQueue();
+      setItems(rows);
+      setCurrentId(rows[0]?.id ?? null);
+    } catch (e: any) {
+      setError(e?.message || "Could not load the verification queue");
+    } finally {
       setLoading(false);
-    };
-
-    fetchVerification();
+    }
   }, []);
 
-  const currentItem = items.find(i => i.id === currentId);
+  useEffect(() => {
+    if (ready && session?.user) load();
+  }, [ready, session, load]);
 
-  const handleAccept = async () => {
-    if (!currentItem) return;
-    
-    // Update in Supabase (mock for now)
-    setItems(prev => prev.map(item =>
-      item.id === currentId ? { ...item, verification_status: "accepted" } : item
-    ));
-    
-    // Move to next
-    const currentIndex = items.findIndex(i => i.id === currentId);
-    if (currentIndex < items.length - 1) {
-      setCurrentId(items[currentIndex + 1].id);
+  const currentItem = items.find((i) => i.id === currentId) ?? null;
+  const pendingCount = items.length;
+
+  const resolve = async (status: "accepted" | "rejected") => {
+    if (!currentItem || busy) return;
+    setBusy(true);
+    try {
+      const s = await getSession();
+      await resolveVerification({
+        recordId: currentItem.id,
+        action: status,
+        notes: note || undefined,
+        userId: s.user?.id ?? currentItem.created_by ?? "",
+        recordCode: currentItem.record_code,
+      });
+      toast({
+        description:
+          status === "accepted"
+            ? `Record ${currentItem.record_code ?? ""} accepted — saved to Supabase`
+            : `Record ${currentItem.record_code ?? ""} rejected and flagged — saved to Supabase`,
+      });
+      setItems((prev) => prev.filter((i) => i.id !== currentItem.id));
+      setCurrentId((prev) => {
+        const rest = items.filter((i) => i.id !== prev);
+        return rest[0]?.id ?? null;
+      });
+      setNote("");
+    } catch (e: any) {
+      toast({ description: e?.message || "Could not save the decision" });
+    } finally {
+      setBusy(false);
     }
-    setNote("");
   };
 
-  const handleReject = async () => {
-    if (!currentItem) return;
-    
-    setItems(prev => prev.map(item =>
-      item.id === currentId ? { ...item, verification_status: "rejected" } : item
-    ));
-    
-    const currentIndex = items.findIndex(i => i.id === currentId);
-    if (currentIndex < items.length - 1) {
-      setCurrentId(items[currentIndex + 1].id);
-    }
-    setNote("");
-  };
-
-  if (loading) {
+  if (!configured) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--surface-page)]">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-[var(--teal-600)] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-[var(--gray-600)]">Loading verification queue...</p>
+      <div>
+        <PageHeader title="Verification queue" description="Records the AI is not confident about." />
+        <SetupNotice what="The verification queue" />
+      </div>
+    );
+  }
+  if (!ready || loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-9 w-72" />
+        <div className="grid gap-6 lg:grid-cols-3">
+          <Skeleton className="h-80 rounded-2xl" />
+          <Skeleton className="h-80 rounded-2xl lg:col-span-2" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[var(--surface-page)]">
-      {/* Header */}
-      <header className="bg-white border-b border-[var(--border-hairline)] px-8 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center gap-2 font-extrabold text-lg text-[var(--ink-800)]">
-            <span className="w-2.5 h-2.5 rounded-[3px] bg-gradient-to-br from-[var(--saffron-600)] to-[var(--indigo-500)]" />
-            LANDLENS
-          </Link>
-          <nav className="flex gap-6 text-sm">
-            <Link href="/dashboard" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Dashboard</Link>
-            <Link href="/upload" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Upload</Link>
-            <Link href="/records" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Records</Link>
-            <Link href="/verification" className="font-medium text-[var(--ink-800)]">Verification</Link>
-          </nav>
+    <div>
+      <PageHeader
+        title="Verification queue"
+        description={`${pendingCount} pending item${pendingCount === 1 ? "" : "s"} — every decision is stored in Supabase with your name on it.`}
+      />
+
+      {error && (
+        <div className="mb-5 rounded-2xl border border-destructive/30 bg-[var(--destructive-soft)] px-4 py-3 text-sm text-destructive">
+          {error}
         </div>
-      </header>
+      )}
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-8 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-[var(--font-serif)] text-[var(--ink-900)] mb-1">Verification Queue</h1>
-            <p className="text-[var(--gray-600)]">
-              {items.filter(i => i.verification_status === "pending").length} pending items
-            </p>
-          </div>
-        </div>
+      {items.length === 0 ? (
+        <EmptyState
+          icon={Inbox}
+          title="Queue is clear"
+          description="There are no records waiting for verification right now. New records appear here automatically after extraction and validation."
+        />
+      ) : (
+        <div className="grid gap-5 lg:grid-cols-3">
+          {/* Queue list */}
+          <Card className="h-fit border-border/80">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold">
+                Queue <span className="font-mono text-muted-foreground">({pendingCount})</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="max-h-[480px] space-y-2 overflow-y-auto">
+              {items.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setCurrentId(item.id)}
+                  className={`w-full rounded-2xl border p-3.5 text-left transition-all ${
+                    currentId === item.id
+                      ? "border-primary/50 bg-accent shadow-sm"
+                      : "border-transparent hover:bg-muted/70"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-semibold">
+                      {item.record_code ?? item.id.slice(0, 8)}
+                    </span>
+                    {item.validation_status === "high_risk" && (
+                      <Badge className="rounded-md bg-[var(--destructive-soft)] px-2 py-0.5 text-[10px] font-bold text-destructive hover:bg-[var(--destructive-soft)]">
+                        HIGH RISK
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="mt-1 truncate text-xs text-muted-foreground">
+                    Survey {item.survey_no ?? "—"} · {(Number(item.confidence_score ?? 0) * 100).toFixed(0)}% confidence
+                  </div>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Left Panel - Queue List */}
-          <div className="lg:col-span-1">
-            <div className="card !p-4">
-              <h3 className="font-semibold text-[var(--ink-800)] mb-4">Queue ({items.filter(i => i.verification_status === "pending").length})</h3>
-              <div className="space-y-2">
-                {items.map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => setCurrentId(item.id)}
-                    className={`w-full text-left p-3 rounded-lg transition-colors ${
-                      currentId === item.id
-                        ? "bg-[var(--teal-50)] border border-[var(--teal-200)]"
-                        : "hover:bg-[var(--surface-raised)]"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-[var(--ink-800)] text-sm">
-                        Survey No: {item.fields.surveyNo}
-                      </span>
-                      {item.verification_status !== "pending" && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          item.verification_status === "accepted" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                        }`}>
-                          {item.verification_status}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-[var(--gray-600)] mt-1">
-                      Khata: {item.fields.khataNo} • Confidence: {(item.confidence_score * 100).toFixed(0)}%
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Panel - Current Item */}
+          {/* Detail */}
           {currentItem && (
-            <div className="lg:col-span-2 space-y-6">
-              {/* Record Details */}
-              <div className="card !p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-[var(--ink-800)]">
-                    Record #{currentItem.record_id}
-                  </h2>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    currentItem.validation_status === "high_risk" ? "bg-red-100 text-red-800" :
-                    currentItem.validation_status === "review" ? "bg-yellow-100 text-yellow-800" :
-                    "bg-green-100 text-green-800"
-                  }`}>
-                    {currentItem.validation_status.toUpperCase()}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                  {[
-                    { label: "Survey Number", value: currentItem.fields.surveyNo },
-                    { label: "Khata Number", value: currentItem.fields.khataNo },
-                    { label: "Owner Name", value: currentItem.fields.ownerName },
-                    { label: "Area", value: currentItem.fields.area },
-                  ].map(({ label, value }) => (
-                    <div key={label} className="p-4 bg-[var(--surface-raised)] rounded-lg">
-                      <div className="text-xs text-[var(--gray-600)] mb-1">{label}</div>
-                      <div className="font-medium text-[var(--ink-800)]">{value || "-"}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex items-center justify-between p-4 bg-[var(--surface-raised)] rounded-lg">
-                  <div>
-                    <div className="text-xs text-[var(--gray-600)]">Confidence Score</div>
-                    <div className="text-2xl font-bold text-[var(--ink-800)]">
-                      {(currentItem.confidence_score * 100).toFixed(1)}%
-                    </div>
+            <div className="space-y-5 lg:col-span-2">
+              <Card className="border-border/80">
+                <CardContent className="p-6">
+                  <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="text-lg font-semibold tracking-tight">
+                      Record {currentItem.record_code ?? currentItem.id.slice(0, 8)}
+                    </h2>
+                    <Badge
+                      className={`rounded-md text-[10px] font-extrabold tracking-wide ${
+                        currentItem.validation_status === "high_risk"
+                          ? "bg-[var(--destructive-soft)] text-destructive hover:bg-[var(--destructive-soft)]"
+                          : currentItem.validation_status === "review"
+                            ? "bg-[var(--warning-soft)] text-warning hover:bg-[var(--warning-soft)]"
+                            : "bg-[var(--success-soft)] text-[var(--success)] hover:bg-[var(--success-soft)]"
+                      }`}
+                    >
+                      {currentItem.validation_status.toUpperCase()}
+                    </Badge>
                   </div>
-                  <div className="w-32 h-2 bg-[var(--gray-200)] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[var(--teal-600)] rounded-full"
-                      style={{ width: `${currentItem.confidence_score * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
-              </div>
 
-              {/* Action Buttons */}
-              <div className="card !p-6">
-                <h3 className="font-semibold text-[var(--ink-800)] mb-4">Verification Actions</h3>
-                
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-[var(--ink-700)] mb-2">
-                    Notes (optional)
+                  <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+                    {[
+                      { label: "Survey Number", value: currentItem.survey_no },
+                      { label: "Khata Number", value: currentItem.khata_no },
+                      { label: "Owner Name", value: currentItem.owner_name },
+                      { label: "Area", value: currentItem.area_detected != null ? `${currentItem.area_detected} Ha` : null },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="rounded-2xl bg-muted/70 p-4">
+                        <div className="mb-1 text-[11px] font-medium text-muted-foreground">{label}</div>
+                        <div className="truncate font-mono text-sm font-bold">{value || "—"}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Extracted field-by-field values */}
+                  {currentItem.fields && Object.keys(currentItem.fields).length > 0 && (
+                    <div className="mb-5 rounded-2xl border border-border p-4">
+                      <div className="mb-2 text-[11px] font-bold tracking-[0.12em] text-muted-foreground">
+                        EXTRACTED FIELDS
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {Object.entries(currentItem.fields).map(([k, v]) => (
+                          <div key={k} className="flex items-baseline justify-between gap-3 border-b border-dashed border-border py-1.5 text-sm last:border-0">
+                            <span className="text-xs text-muted-foreground">{FIELD_LABELS[k] ?? k}</span>
+                            <b className="truncate font-mono text-[13px]">{String(v ?? "") || "—"}</b>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-muted/70 p-4">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Confidence score</div>
+                      <div className="font-mono text-2xl font-bold">
+                        {(Number(currentItem.confidence_score ?? 0) * 100).toFixed(1)}%
+                      </div>
+                    </div>
+                    <Progress value={Number(currentItem.confidence_score ?? 0) * 100} className="h-2 w-40" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="border-border/80">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Verification actions</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <label className="mb-2 block text-sm font-medium text-muted-foreground">
+                    Notes <span className="font-normal">(optional)</span>
                   </label>
-                  <textarea
+                  <Textarea
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     rows={3}
-                    className="input w-full resize-none"
-                    placeholder="Add verification notes..."
+                    className="mb-4 resize-none rounded-2xl"
+                    placeholder="Add verification notes… (required context for a rejection is recommended)"
                   />
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleAccept}
-                    className="btn btn-teal flex-1"
-                  >
-                    ✓ Accept Record
-                  </button>
-                  <button
-                    onClick={handleReject}
-                    className="btn btn-danger flex-1"
-                  >
-                    ✕ Reject & Flag
-                  </button>
-                </div>
-              </div>
-
-              {/* AI Recommendations */}
-              <div className="card !p-6">
-                <h3 className="font-semibold text-[var(--ink-800)] mb-4">AI Recommendations</h3>
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <span className="text-lg">⚠️</span>
-                    <div>
-                      <p className="text-sm font-medium text-yellow-800">Low Confidence Alert</p>
-                      <p className="text-xs text-yellow-700 mt-1">
-                        Confidence score ({(currentItem.confidence_score * 100).toFixed(0)}%) is below threshold. Manual verification recommended.
-                      </p>
-                    </div>
+                  {/* Both decision buttons are always rendered side-by-side
+                      (stacked on mobile) so neither can be pushed off-screen
+                      or hidden by overflow. */}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Button
+                      className="h-11 rounded-full text-[15px]"
+                      disabled={busy}
+                      onClick={() => resolve("accepted")}
+                    >
+                      <Check className="h-4 w-4" /> Accept record
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="h-11 rounded-full bg-[#c64228] text-[15px] font-semibold text-white shadow-md shadow-destructive/25 hover:bg-[#a73620] dark:bg-[#c64228] dark:hover:bg-[#a73620]"
+                      disabled={busy}
+                      onClick={() => resolve("rejected")}
+                    >
+                      <X className="h-4 w-4" /> Reject &amp; flag
+                    </Button>
                   </div>
-                  <div className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <span className="text-lg">💡</span>
-                    <div>
-                      <p className="text-sm font-medium text-blue-800">Format Issue Detected</p>
-                      <p className="text-xs text-blue-700 mt-1">
-                        Owner name format may not match standard pattern. Please verify.
-                      </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-border/80">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Review hints</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {Number(currentItem.confidence_score ?? 1) < 0.9 && (
+                    <div className="flex items-start gap-3 rounded-2xl border border-warning/25 bg-[var(--warning-soft)] p-4">
+                      <TriangleAlert className="mt-0.5 h-4.5 w-4.5 shrink-0 text-warning" />
+                      <div>
+                        <p className="text-sm font-semibold text-warning">Low confidence alert</p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-warning/80">
+                          Confidence score ({(Number(currentItem.confidence_score) * 100).toFixed(0)}%) is below the 90% threshold.
+                          Manual verification is recommended before acceptance.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </div>
+                  )}
+                  {currentItem.dup_match_code && (
+                    <div className="flex items-start gap-3 rounded-2xl border border-destructive/25 bg-[var(--destructive-soft)] p-4">
+                      <TriangleAlert className="mt-0.5 h-4.5 w-4.5 shrink-0 text-destructive" />
+                      <div>
+                        <p className="text-sm font-semibold text-destructive">Possible duplicate</p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-destructive/80">
+                          This record matched existing entry {currentItem.dup_match_code} with {currentItem.dup_similarity ?? "?"}% similarity.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {currentItem.area_detected != null && currentItem.area_reference != null && Math.abs(currentItem.area_detected - currentItem.area_reference) > 0.001 && (
+                    <div className="flex items-start gap-3 rounded-2xl border border-primary/20 bg-accent p-4">
+                      <Lightbulb className="mt-0.5 h-4.5 w-4.5 shrink-0 text-accent-foreground" />
+                      <div>
+                        <p className="text-sm font-semibold text-accent-foreground">Area mismatch</p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-accent-foreground/80">
+                          Document shows {currentItem.area_detected} Ha vs reference {currentItem.area_reference} Ha
+                          (difference {Math.abs(currentItem.area_detected - currentItem.area_reference).toFixed(2)} Ha).
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           )}
         </div>
-      </main>
+      )}
     </div>
   );
 }

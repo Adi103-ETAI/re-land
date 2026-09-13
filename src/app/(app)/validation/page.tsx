@@ -1,114 +1,438 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, CircleHelp, Inbox, Scale, ShieldCheck, Sparkles, TriangleAlert } from "lucide-react";
 import Tracker from "@/components/workflow/Tracker";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { EmptyState, SetupNotice } from "@/components/system/states";
+import { useToast } from "@/hooks/use-toast";
 import { useCaseStore } from "@/store/case-store";
-
-const answers: Record<string, string> = {
-  flag: "This record was flagged because the land area mentioned in the scanned document differs from the cadastral database record. This requires officer verification.",
-  lowconf: "The <b>Mutation Date</b> field has the lowest AI confidence at 64%, followed by <b>Classification</b> at 87%. Both are below the 90% auto-approval threshold.",
-  missing: "No fields are fully missing, but <b>Khata Number</b> was partially legible on similar historical documents.",
-  why: "This record needs verification because one AI-extracted value conflicts with an existing database record and one field fell below the confidence threshold.",
-};
+import { useRequireAuth } from "@/hooks/use-require-auth";
+import { logAudit, updateRecord } from "@/lib/db";
+import { getSession } from "@/lib/supabase";
 
 export default function Validation() {
-  const { currentCase, setCase } = useCaseStore();
+  const router = useRouter();
+  const { configured } = useRequireAuth();
+  const { currentCase, recordId, fields, setCase } = useCaseStore();
   const [answer, setAnswer] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const [areaResolved, setAreaResolved] = useState(false);
   const [dupResolved, setDupResolved] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
   const [editArea, setEditArea] = useState(false);
-  const [areaInput, setAreaInput] = useState(String(currentCase.areaDb));
-  const show = (m: string) => { setToast(m); setTimeout(() => setToast(null), 3000); };
+  const [areaInput, setAreaInput] = useState(String(currentCase?.areaDb ?? ""));
+  const [sending, setSending] = useState(false);
+  const { toast } = useToast();
+
+  if (!configured) {
+    return (
+      <div>
+        <PageHeader title="Validation center" description="Cross-checking extracted values against reference records." />
+        <SetupNotice what="Validation state" />
+      </div>
+    );
+  }
+
+  if (!currentCase || !recordId) {
+    return (
+      <div>
+        <PageHeader title="Validation center" description="Cross-checking extracted values against reference records." />
+        <EmptyState
+          icon={Inbox}
+          title="No record in validation"
+          description="Extract a document first — the validation center works on the record that just came out of the pipeline."
+          action={
+            <Link href="/upload">
+              <Button className="rounded-full">Upload a document</Button>
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  const show = (m: string) => toast({ description: m });
   const mismatch = +(currentCase.area - currentCase.areaDb).toFixed(2);
   const hasMismatch = !areaResolved && Math.abs(mismatch) > 0.001;
-  const score = Math.max(70, Math.round(100 - (hasMismatch ? 6 : 0) - (!dupResolved && currentCase.dupMatch ? 4 : 0) - 2));
+  const lowConfFields = (fields ?? [])
+    .filter((f) => (f.confidence ?? 1) < 0.9)
+    .map((f) => f.key);
+  const score = Math.max(
+    70,
+    Math.round(100 - (hasMismatch ? 6 : 0) - (!dupResolved && currentCase.dupMatch ? 4 : 0) - (lowConfFields.length > 0 ? 2 : 0))
+  );
+
+  // Real explanations derived from this record's data — no canned demo text.
+  const explanations: Record<string, string> = {
+    flag: hasMismatch
+      ? `This record is flagged because the land area detected on the scanned document (${currentCase.area} Ha) differs from the reference value (${currentCase.areaDb} Ha) by ${Math.abs(mismatch).toFixed(2)} Ha. Officer confirmation is required before approval.`
+      : !dupResolved && currentCase.dupMatch
+        ? `This record is flagged because survey ${currentCase.survey} matches existing record ${currentCase.dupMatch} with ${currentCase.dupSim}% similarity — a possible duplicate entry.`
+        : "This record passed the automated cross-checks with no blocking conflicts.",
+    lowconf: lowConfFields.length
+      ? `The fields below the 90% auto-approval threshold are: ${lowConfFields.map((k) => `<b>${k}</b>`).join(", ")}. Verify these values against the paper document.`
+      : "Every extracted field is at or above the 90% confidence threshold on this record.",
+    missing:
+      "Fields the model could not locate on the paper are shown as “not on paper” on the extraction page and stored as empty values — confirm them manually if the register contains them.",
+    why:
+      hasMismatch || (!dupResolved && currentCase.dupMatch) || lowConfFields.length
+        ? "This record needs verification because at least one automated check raised a conflict or a field fell below the confidence threshold."
+        : "This record is eligible for fast-track approval — all checks passed.",
+  };
+
+  const checks = [
+    { title: "Ownership extraction", badge: "Extracted", left: currentCase.owner, right: currentCase.owner },
+    { title: "Survey number", badge: "Valid format", left: currentCase.survey, right: currentCase.survey },
+    { title: "Location", badge: "Parsed", left: currentCase.village, right: `${currentCase.tehsil || "—"} / ${currentCase.district || "—"}` },
+  ];
+
+  const persist = async (patch: Parameters<typeof updateRecord>[1], message: string, action: string) => {
+    try {
+      const session = await getSession();
+      await updateRecord(recordId, patch);
+      await logAudit({
+        userId: session.user?.id,
+        action,
+        entityType: "record",
+        entityId: currentCase.recId,
+        newValues: patch as Record<string, any>,
+      });
+      show(message);
+    } catch (e: any) {
+      show(e?.message || "Could not save to Supabase");
+    }
+  };
 
   return (
     <div>
-      <div className="flex items-baseline justify-between flex-wrap gap-2 mb-5">
-        <div><h2 className="font-[var(--font-serif)] text-2xl font-semibold">Validation center</h2><p className="text-sm text-[var(--gray-600)]">Cross-checking extracted values against LRMS and cadastral databases.</p></div>
-        <Link href="/verification" className="btn btn-primary btn-sm">Send to verification →</Link>
-      </div>
+      <PageHeader
+        title="Validation center"
+        description={`Reviewing ${currentCase.recId} — extracted values vs reference data.`}
+        actions={
+          <Button
+            className="rounded-full"
+            disabled={sending}
+            onClick={async () => {
+              setSending(true);
+              await persist(
+                { validation_status: "review", verification_status: "pending" },
+                "Record sent to the verification queue",
+                "RECORD_SENT_TO_VERIFICATION"
+              );
+              setSending(false);
+              router.push("/verification");
+            }}
+          >
+            Send to verification <ArrowRight className="h-4 w-4" />
+          </Button>
+        }
+      />
       <Tracker activeIdx={4} />
-      <div className="flex items-center gap-6 bg-gradient-to-br from-[var(--ink-800)] to-[#3C415B] rounded-2xl p-6 text-white mb-5">
-        <div className="w-[88px] h-[88px] rounded-full flex items-center justify-center shrink-0" style={{ background: `conic-gradient(var(--saffron-600) 0 ${score}%, rgba(255,255,255,.15) ${score}% 100%)` }}>
-          <div className="w-[70px] h-[70px] rounded-full bg-[var(--ink-800)] flex items-center justify-center font-mono font-bold text-xl">{score}</div>
-        </div>
-        <div><h3 className="font-semibold">Validation score: {score} / 100</h3><p className="text-[#DCE5FE] text-sm">{hasMismatch ? "1 mismatch" : "all fields matched"} · {currentCase.dupMatch ? "1 possible duplicate" : "no duplicates found"}</p></div>
-      </div>
 
-      {[
-        { title: "Ownership verification", badge: "✓ Match found", color: "bg-[#F0F7EC] text-[#496D21]", left: currentCase.owner, right: currentCase.owner },
-        { title: "Survey number", badge: "✓ Valid", color: "bg-[#F0F7EC] text-[#496D21]", left: currentCase.survey, right: currentCase.survey },
-        { title: "Location", badge: "✓ Verified", color: "bg-[#F0F7EC] text-[#496D21]", left: currentCase.village, right: `${currentCase.tehsil} / ${currentCase.district}` },
-      ].map(c => (
-        <div key={c.title} className="card !p-4 mb-3">
-          <div className="flex justify-between items-center mb-2"><b className="text-sm text-[var(--ink-800)]">{c.title}</b><span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${c.color}`}>{c.badge}</span></div>
-          <div className="grid grid-cols-2 gap-4 text-sm"><div><span className="text-xs text-[var(--gray-500)]">AI record</span><b className="block font-mono text-[var(--ink-800)]">{c.left}</b></div><div><span className="text-xs text-[var(--gray-500)]">Database</span><b className="block font-mono text-[var(--ink-800)]">{c.right}</b></div></div>
-        </div>
-      ))}
-
-      <h3 className="font-semibold text-[var(--ink-800)] mt-6 mb-1">⚠ AI Detected Issues</h3>
-      <p className="text-sm text-[var(--gray-600)] mb-3">Every issue below was surfaced automatically by the validation engine.</p>
-
-      <div className={`card mb-3 border-l-4 ${hasMismatch ? "border-l-[#B5651D]" : "border-l-[#496D21]"}`}>
-        <div className="flex justify-between items-center mb-2"><b className="text-sm">Area mismatch detected</b><span className={`text-[11px] font-extrabold px-2 py-1 rounded-md uppercase ${hasMismatch ? "bg-[#FFF3EA] text-[#B5651D]" : "bg-[#F0F7EC] text-[#496D21]"}`}>{hasMismatch ? "MEDIUM" : "RESOLVED"}</span></div>
-        <div className="grid grid-cols-3 gap-3 text-sm mb-2"><div><span className="text-xs text-[var(--gray-500)]">Detected value</span><b className="block font-mono">{currentCase.area} Hectare</b></div><div><span className="text-xs text-[var(--gray-500)]">Expected value</span><b className="block font-mono">{currentCase.areaDb} Hectare</b></div><div><span className="text-xs text-[var(--gray-500)]">AI confidence</span><b className="block">91%</b></div></div>
-        <div className="text-xs text-[var(--gray-600)]">{hasMismatch ? `Difference: ${Math.abs(mismatch).toFixed(2)} Hectare — flagged for officer review.` : "Resolved — officer accepted 2.40 Hectare."}</div>
-        {editArea ? (
-          <div className="flex gap-2 mt-3 items-center"><input value={areaInput} onChange={e=>setAreaInput(e.target.value)} className="px-3 py-2 border border-[var(--border-hairline)] rounded-lg text-sm w-32" placeholder="e.g. 2.40" /><button onClick={()=>{const v=parseFloat(areaInput); if(!isNaN(v)){setCase({...currentCase, area:v, areaDb:v}); setAreaResolved(true); setEditArea(false); show(`Area updated to ${v} Hectare — logged to audit`);}}} className="btn btn-teal btn-sm">Save</button><button onClick={()=>setEditArea(false)} className="btn btn-ghost btn-sm">Cancel</button></div>
-        ) : (
-          <div className="flex gap-2 mt-3 flex-wrap">
-            <button onClick={()=>{setCase({...currentCase, area: currentCase.areaDb}); setAreaResolved(true); show("Accepted AI suggestion: area set to "+currentCase.areaDb+" Hectare — audit logged");}} className="btn btn-teal btn-sm">Accept AI Suggestion</button>
-            <button onClick={()=>setEditArea(true)} className="btn btn-ghost btn-sm">Edit Manually</button>
-            <Link href="/verification" className="btn btn-ghost btn-sm">Send for Verification</Link>
+      {/* Score banner */}
+      <div className="mb-5 flex items-center gap-6 rounded-2xl bg-sidebar p-6 text-sidebar-foreground">
+        <div
+          className="grid h-[88px] w-[88px] shrink-0 place-items-center rounded-full"
+          style={{ background: `conic-gradient(var(--primary) 0 ${score}%, rgba(255,255,255,.15) ${score}% 100%)` }}
+        >
+          <div className="grid h-[70px] w-[70px] place-items-center rounded-full bg-sidebar font-mono text-xl font-bold">
+            {score}
           </div>
-        )}
-      </div>
-
-      <div className={`card mb-3 border-l-4 ${!dupResolved && currentCase.dupMatch ? "border-l-[#A13A2C]" : "border-l-[#496D21]"}`}>
-        <div className="flex justify-between items-center mb-2"><b className="text-sm">Survey number conflict</b><span className={`text-[11px] font-extrabold px-2 py-1 rounded-md uppercase ${!dupResolved && currentCase.dupMatch ? "bg-[#FDF3F0] text-[#A13A2C]" : "bg-[#F0F7EC] text-[#496D21]"}`}>{!dupResolved && currentCase.dupMatch ? "HIGH" : "RESOLVED"}</span></div>
-        <div className="grid grid-cols-3 gap-3 text-sm mb-2"><div><span className="text-xs text-[var(--gray-500)]">Detected value</span><b className="block font-mono">{currentCase.survey}</b></div><div><span className="text-xs text-[var(--gray-500)]">Conflicting record</span><b className="block font-mono">{currentCase.dupMatch ?? "No match found"}</b></div><div><span className="text-xs text-[var(--gray-500)]">AI confidence</span><b className="block">{currentCase.dupSim}%</b></div></div>
-        {!dupResolved && currentCase.dupMatch && <div className="text-xs text-[var(--gray-600)] mb-2">Record shares owner, village and survey number with an existing entry — possible duplicate.</div>}
-        <div className="flex gap-2 mt-3">
-          <button onClick={()=>setShowCompare(true)} className="btn btn-ghost btn-sm">Compare records</button>
-          <button onClick={()=>{setDupResolved(true); show("Marked as not a duplicate — retained as new record "+currentCase.recId);}} className="btn btn-teal btn-sm">Not a duplicate</button>
-          {!dupResolved && currentCase.dupMatch && <button onClick={()=>{setDupResolved(true); show("Marked as duplicate — linked to "+(currentCase.dupMatch||"")+" and sent to verification");}} className="btn btn-ghost btn-sm">Mark as duplicate</button>}
+        </div>
+        <div>
+          <h3 className="font-semibold">Validation score: {score} / 100</h3>
+          <p className="text-sm text-sidebar-foreground/60">
+            {hasMismatch ? "1 mismatch" : "area values consistent"} ·{" "}
+            {currentCase.dupMatch ? "1 possible duplicate" : "no duplicates found"}
+          </p>
         </div>
       </div>
 
-      {showCompare && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={()=>setShowCompare(false)}>
-          <div className="bg-white rounded-2xl p-6 w-[720px] max-w-full max-h-[80vh] overflow-auto" onClick={e=>e.stopPropagation()}>
-            <h3 className="font-semibold mb-1">Compare records</h3>
-            <p className="text-sm text-[var(--gray-600)] mb-4">Current vs conflicting record — side-by-side.</p>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div className="border border-[var(--border-hairline)] rounded-xl p-4"><div className="text-xs font-bold text-[var(--gray-500)] mb-2">CURRENT: {currentCase.recId}</div><div className="space-y-1"><div className="flex justify-between"><span className="text-[var(--gray-600)]">Owner</span><b className="font-mono">{currentCase.owner}</b></div><div className="flex justify-between"><span className="text-[var(--gray-600)]">Survey</span><b className="font-mono">{currentCase.survey}</b></div><div className="flex justify-between"><span className="text-[var(--gray-600)]">Village</span><b className="font-mono">{currentCase.village}</b></div><div className="flex justify-between"><span className="text-[var(--gray-600)]">Area</span><b className="font-mono">{currentCase.area} Ha</b></div></div></div>
-              <div className="border border-[var(--border-hairline)] rounded-xl p-4 bg-[var(--surface-raised)]"><div className="text-xs font-bold text-[var(--gray-500)] mb-2">CONFLICT: {currentCase.dupMatch}</div><div className="space-y-1"><div className="flex justify-between"><span className="text-[var(--gray-600)]">Owner</span><b className="font-mono">{currentCase.owner}</b></div><div className="flex justify-between"><span className="text-[var(--gray-600)]">Survey</span><b className="font-mono">{currentCase.survey}</b></div><div className="flex justify-between"><span className="text-[var(--gray-600)]">Village</span><b className="font-mono">{currentCase.village}</b></div><div className="flex justify-between"><span className="text-[var(--gray-600)]">Area</span><b className="font-mono">2.40 Ha</b></div><div className="text-xs text-[var(--error)] mt-2">Same owner+village+survey — flagged {currentCase.dupSim}% similarity</div></div></div>
+      {/* Matched checks */}
+      <div className="mb-6 grid gap-3 md:grid-cols-3">
+        {checks.map((c) => (
+          <Card key={c.title} className="border-border/80">
+            <CardContent className="p-4">
+              <div className="mb-3 flex justify-between items-center gap-2">
+                <b className="text-sm">{c.title}</b>
+                <Badge className="rounded-md bg-[var(--success-soft)] text-[10px] font-bold text-[var(--success)] hover:bg-[var(--success-soft)]">
+                  <ShieldCheck className="mr-1 h-3 w-3" /> {c.badge}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-xs text-muted-foreground">AI record</span>
+                  <b className="block truncate font-mono">{c.left || "—"}</b>
+                </div>
+                <div>
+                  <span className="text-xs text-muted-foreground">Reference</span>
+                  <b className="block truncate font-mono">{c.right || "—"}</b>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <h3 className="mb-1 flex items-center gap-2 font-semibold">
+        <TriangleAlert className="h-4.5 w-4.5 text-warning" /> Detected issues
+      </h3>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Every issue below was surfaced automatically by the validation engine.
+      </p>
+
+      {/* Area mismatch */}
+      <Card className={`mb-3 border-border/80 border-l-4 ${hasMismatch ? "border-l-[var(--warning)]" : "border-l-[var(--success)]"}`}>
+        <CardContent className="p-5">
+          <div className="mb-3 flex flex-wrap justify-between items-center gap-2">
+            <b className="text-sm">Area check</b>
+            <Badge
+              className={`rounded-md text-[10px] font-extrabold ${
+                hasMismatch
+                  ? "bg-[var(--warning-soft)] text-warning hover:bg-[var(--warning-soft)]"
+                  : "bg-[var(--success-soft)] text-[var(--success)] hover:bg-[var(--success-soft)]"
+              }`}
+            >
+              {hasMismatch ? "MISMATCH" : "RESOLVED"}
+            </Badge>
+          </div>
+          <div className="mb-2 grid grid-cols-3 gap-3 text-sm">
+            <div>
+              <span className="text-xs text-muted-foreground">Detected value</span>
+              <b className="block font-mono">{currentCase.area} Hectare</b>
             </div>
-            <div className="flex gap-2 mt-4"><button onClick={()=>setShowCompare(false)} className="btn btn-ghost btn-sm flex-1">Close</button><button onClick={()=>{setShowCompare(false); setDupResolved(true); show("Resolved: not a duplicate");}} className="btn btn-teal btn-sm flex-1">Not a duplicate</button></div>
+            <div>
+              <span className="text-xs text-muted-foreground">Reference value</span>
+              <b className="block font-mono">{currentCase.areaDb} Hectare</b>
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">Difference</span>
+              <b className="block font-mono">{Math.abs(mismatch).toFixed(2)} Ha</b>
+            </div>
           </div>
-        </div>
-      )}
+          <p className="text-xs text-muted-foreground">
+            {hasMismatch
+              ? `Difference: ${Math.abs(mismatch).toFixed(2)} Hectare — flagged for officer review.`
+              : "Resolved — the accepted area has been saved."}
+          </p>
+          {editArea ? (
+            <div className="mt-3 flex items-center gap-2">
+              <Input
+                value={areaInput}
+                onChange={(e) => setAreaInput(e.target.value)}
+                className="w-36 rounded-xl"
+                placeholder="e.g. 2.40"
+              />
+              <Button
+                size="sm"
+                className="rounded-full"
+                onClick={async () => {
+                  const v = parseFloat(areaInput);
+                  if (!isNaN(v)) {
+                    setCase({ ...currentCase, area: v, areaDb: v });
+                    setAreaResolved(true);
+                    setEditArea(false);
+                    await persist({ area_detected: v, area_reference: v }, `Area updated to ${v} Ha — saved to Supabase`, "RECORD_AREA_CORRECTED");
+                  }
+                }}
+              >
+                Save
+              </Button>
+              <Button size="sm" variant="ghost" className="rounded-full" onClick={() => setEditArea(false)}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                className="rounded-full"
+                onClick={async () => {
+                  setCase({ ...currentCase, area: currentCase.areaDb });
+                  setAreaResolved(true);
+                  await persist(
+                    { area_detected: currentCase.areaDb },
+                    `Accepted reference area ${currentCase.areaDb} Ha — saved to Supabase`,
+                    "RECORD_AREA_ACCEPTED"
+                  );
+                }}
+              >
+                Accept reference value
+              </Button>
+              <Button size="sm" variant="outline" className="rounded-full" onClick={() => setEditArea(true)}>
+                Edit manually
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      <div className="card mt-4">
-        <h3 className="font-semibold text-sm flex items-center gap-2">💬 Ask LandLens AI</h3>
-        <p className="text-xs text-[var(--gray-600)] mb-3">Get a plain-language explanation of any flag on this record.</p>
-        <div className="flex flex-wrap gap-2 mb-3">
-          {[
-            ["flag", "Why is this record flagged?"],
-            ["lowconf", "Which field has low confidence?"],
-            ["missing", "What information is missing?"],
-            ["why", "Why does this record need verification?"],
-          ].map(([k, l]) => (
-            <button key={k} onClick={() => setAnswer(answers[k])} className="bg-[var(--surface-raised)] border border-[var(--border-hairline)] px-3 py-1.5 rounded-full text-xs font-semibold hover:border-[var(--saffron-600)]">{l}</button>
-          ))}
-        </div>
-        {answer && <div className="bg-[var(--surface-raised)] border-l-[3px] border-[var(--saffron-600)] rounded-lg px-3.5 py-3 text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: `🧠 <b>LandLens AI:</b> ${answer}` }} />}
-      </div>
-      {toast && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[var(--ink-800)] text-white px-4 py-2 rounded-full text-sm shadow-lg z-50">{toast}</div>}
+      {/* Duplicate conflict */}
+      <Card className={`mb-3 border-border/80 border-l-4 ${!dupResolved && currentCase.dupMatch ? "border-l-destructive" : "border-l-[var(--success)]"}`}>
+        <CardContent className="p-5">
+          <div className="mb-3 flex flex-wrap justify-between items-center gap-2">
+            <b className="text-sm">Survey number conflict</b>
+            <Badge
+              className={`rounded-md text-[10px] font-extrabold ${
+                !dupResolved && currentCase.dupMatch
+                  ? "bg-[var(--destructive-soft)] text-destructive hover:bg-[var(--destructive-soft)]"
+                  : "bg-[var(--success-soft)] text-[var(--success)] hover:bg-[var(--success-soft)]"
+              }`}
+            >
+              {!dupResolved && currentCase.dupMatch ? "HIGH" : "RESOLVED"}
+            </Badge>
+          </div>
+          <div className="mb-2 grid grid-cols-3 gap-3 text-sm">
+            <div>
+              <span className="text-xs text-muted-foreground">Detected value</span>
+              <b className="block font-mono">{currentCase.survey}</b>
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">Conflicting record</span>
+              <b className="block font-mono">{currentCase.dupMatch ?? "No match found"}</b>
+            </div>
+            <div>
+              <span className="text-xs text-muted-foreground">Similarity</span>
+              <b className="block">{currentCase.dupSim}%</b>
+            </div>
+          </div>
+          {!dupResolved && currentCase.dupMatch && (
+            <p className="mb-2 text-xs text-muted-foreground">
+              Record shares owner, village and survey number with an existing entry — possible duplicate.
+            </p>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" className="rounded-full" onClick={() => setShowCompare(true)}>
+              <Scale className="h-4 w-4" /> Compare records
+            </Button>
+            <Button
+              size="sm"
+              className="rounded-full"
+              onClick={async () => {
+                setDupResolved(true);
+                await persist(
+                  { dup_match_code: null, dup_similarity: null },
+                  `Marked as not a duplicate — saved to Supabase`,
+                  "RECORD_DUPLICATE_DISMISSED"
+                );
+              }}
+            >
+              Not a duplicate
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Compare dialog */}
+      <Dialog open={showCompare} onOpenChange={setShowCompare}>
+        <DialogContent className="max-w-[720px] rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Compare records</DialogTitle>
+            <DialogDescription>Current vs conflicting record — side by side.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-border p-4">
+              <div className="mb-2 text-[11px] font-bold tracking-wide text-muted-foreground">
+                CURRENT: {currentCase.recId}
+              </div>
+              <div className="space-y-2 text-sm">
+                {[
+                  ["Owner", currentCase.owner],
+                  ["Survey", currentCase.survey],
+                  ["Village", currentCase.village],
+                  ["Area", `${currentCase.area} Ha`],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex justify-between">
+                    <span className="text-muted-foreground">{k}</span>
+                    <b className="font-mono">{v || "—"}</b>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-destructive/25 bg-[var(--destructive-soft)]/60 p-4">
+              <div className="mb-2 text-[11px] font-bold tracking-wide text-destructive">
+                CONFLICT: {currentCase.dupMatch ?? "—"}
+              </div>
+              <div className="space-y-2 text-sm">
+                {[
+                  ["Owner", currentCase.owner],
+                  ["Survey", currentCase.survey],
+                  ["Village", currentCase.village],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex justify-between">
+                    <span className="text-muted-foreground">{k}</span>
+                    <b className="font-mono">{v || "—"}</b>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-destructive">
+                Same owner + village + survey — flagged {currentCase.dupSim}% similarity
+              </p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" className="rounded-full" onClick={() => setShowCompare(false)}>
+              Close
+            </Button>
+            <Button
+              className="rounded-full"
+              onClick={async () => {
+                setShowCompare(false);
+                setDupResolved(true);
+                await persist({ dup_match_code: null, dup_similarity: null }, "Resolved: not a duplicate — saved", "RECORD_DUPLICATE_DISMISSED");
+              }}
+            >
+              Not a duplicate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Explain this record */}
+      <Card className="mt-4 border-border/80">
+        <CardContent className="p-5">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <Sparkles className="h-4 w-4 text-primary" /> Explain this record
+          </h3>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Plain-language explanations generated from this record&apos;s actual validation results.
+          </p>
+          <div className="mb-3 flex flex-wrap gap-2">
+            {[
+              ["flag", "Why is this record flagged?"],
+              ["lowconf", "Which fields have low confidence?"],
+              ["missing", "What information is missing?"],
+              ["why", "Why does this record need verification?"],
+            ].map(([k, l]) => (
+              <button
+                key={k}
+                onClick={() => setAnswer(explanations[k])}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 px-3 py-1.5 text-xs font-semibold transition-colors hover:border-primary/50 hover:bg-accent"
+              >
+                <CircleHelp className="h-3.5 w-3.5 text-muted-foreground" /> {l}
+              </button>
+            ))}
+          </div>
+          {answer && (
+            <div className="rounded-xl border-l-[3px] border-primary bg-muted/70 px-4 py-3 text-sm leading-relaxed">
+              <b>Validation engine:</b> <span dangerouslySetInnerHTML={{ __html: answer }} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

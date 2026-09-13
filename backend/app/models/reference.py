@@ -30,7 +30,7 @@ class ReferenceDataSource(Base, BaseRecord):
     data_type = Column(SAEnum(DataSourceType), nullable=False)
     is_synthetic = Column(Boolean, default=False, index=True)  # Critical for prototype transparency
     last_synced_at = Column(String, nullable=True)  # ISO format
-    metadata = Column(String, nullable=True)
+    meta_json = Column('metadata', String, nullable=True)
     
     gis_references = relationship("GISReference", back_populates="source_dataset")
 
@@ -43,7 +43,7 @@ class ModelVersion(Base, BaseRecord):
     version_tag = Column(String, nullable=False)
     deployed_at = Column(String, nullable=True)  # ISO format
     status = Column(SAEnum(ModelStatus), default=ModelStatus.TESTING)
-    metadata = Column(String, nullable=True)
+    meta_json = Column('metadata', String, nullable=True)
     
     classifications = relationship("DocumentClassification", back_populates="model")
     ocr_results = relationship("OCRResult", back_populates="model")

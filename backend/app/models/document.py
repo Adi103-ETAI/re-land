@@ -36,7 +36,7 @@ class Batch(Base, BaseRecord):
     status = Column(SAEnum(DocumentStatus), default=DocumentStatus.UPLOADED, index=True)
     created_by_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     
-    created_by = relationship("User", back_populates="batches_created")
+    created_by = relationship("User", foreign_keys=[created_by_id])
     documents = relationship("Document", back_populates="batch", cascade="all, delete-orphan")
 
 class Document(Base, BaseRecord):

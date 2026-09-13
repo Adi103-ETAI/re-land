@@ -1,8 +1,113 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
-/* ── Sarvam-inspired Design Tokens — applied to LANDLENS ── */
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--ink);
+  --color-muted-foreground: var(--gray-600);
+  --color-border: var(--border-hairline);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--saffron-600);
+  --color-primary-foreground: #ffffff;
+  --color-saffron-500: var(--saffron-500);
+  --color-indigo-400: var(--indigo-500);
+  --color-violet-400: #A78BFA;
+  --color-ring: var(--indigo-500);
+  --color-input: var(--border-hairline);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: #ffffff;
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+}
+
+/* ── Glassmorphism animation system (sign-in) ── */
+@keyframes fadeSlideIn {
+  from { opacity: 0; filter: blur(8px); transform: translateY(16px); }
+  to   { opacity: 1; filter: blur(0);   transform: translateY(0); }
+}
+@keyframes slideRightIn {
+  from { opacity: 0; filter: blur(8px); transform: translateX(24px); }
+  to   { opacity: 1; filter: blur(0);   transform: translateX(0); }
+}
+@keyframes testimonialIn {
+  from { opacity: 0; filter: blur(8px); transform: translateY(24px) scale(0.98); }
+  to   { opacity: 1; filter: blur(0);   transform: translateY(0) scale(1); }
+}
+
+.animate-fade-slide-in { animation: fadeSlideIn 0.7s ease-out both; }
+.animate-slide-right   { animation: slideRightIn 0.7s ease-out both; }
+.animate-testimonial   { animation: testimonialIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-element       { animation: fadeSlideIn 0.6s ease-out both; }
+
+.animate-delay-100 { animation-delay: 100ms; }
+.animate-delay-200 { animation-delay: 200ms; }
+.animate-delay-300 { animation-delay: 300ms; }
+.animate-delay-400 { animation-delay: 400ms; }
+.animate-delay-500 { animation-delay: 500ms; }
+.animate-delay-600 { animation-delay: 600ms; }
+.animate-delay-700 { animation-delay: 700ms; }
+.animate-delay-800 { animation-delay: 800ms; }
+.animate-delay-900 { animation-delay: 900ms; }
+.animate-delay-1000 { animation-delay: 1000ms; }
+.animate-delay-1200 { animation-delay: 1200ms; }
+.animate-delay-1400 { animation-delay: 1400ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-slide-in, .animate-slide-right, .animate-testimonial, .animate-element {
+    animation: none;
+  }
+}
+
 :root {
-  /* Sarvam core */
+  /* LANDLENS — warm paper neutrals + saffron brand */
+  --radius: 1rem;
+  --background: #faf9f7;
+  --foreground: #1f1f1f;
+  --card: #ffffff;
+  --card-foreground: #1f1f1f;
+  --popover: #ffffff;
+  --popover-foreground: #1f1f1f;
+  --primary: #ea6a0a;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f1ed;
+  --secondary-foreground: #2a2c33;
+  --muted: #f3f1ed;
+  --muted-foreground: #6e6a63;
+  --accent: #fdeee2;
+  --accent-foreground: #b4540a;
+  --destructive: #c64228;
+  --border: #eae7e1;
+  --input: #e5e1da;
+  --ring: #ea6a0a;
+  --chart-1: #ea6a0a;
+  --chart-2: #2a2c33;
+  --chart-3: #4d7c0f;
+  --chart-4: #b4540a;
+  --chart-5: #8a8578;
+  --sidebar: #23252b;
+  --sidebar-foreground: #e9e6df;
+  --sidebar-primary: #ea6a0a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(255, 255, 255, 0.07);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+  --sidebar-ring: #ea6a0a;
+  /* Semantic states */
+  --success: #4d7c0f;
+  --success-soft: #f0f6e6;
+  --warning: #b4540a;
+  --warning-soft: #fdf1e4;
+  --destructive-soft: #fbeee9;
+
+  /* ── LANDLENS design tokens (Sarvam-inspired) ─────────────────── */
   --saffron-600: #F87613;
   --saffron-500: #F08634;
   --saffron-300: #FDDABE;
@@ -21,23 +126,16 @@
   --peri-200: #DCE5FE;
   --peri-100: #E8EFFC;
   --peach-100: #FEEDE6;
-
-  /* LANDLENS semantic aliases (earthy brand preserved via saffron + ink) */
-  --navy: var(--ink-800);       /* was #4A2E1F */
-  --blue: #3C415B;              /* was #7A4A2E — now desaturated for Sarvam dark panel */
-  --teal: var(--saffron-600);   /* was #B4784A — now saffron primary */
-  --bg: var(--surface-page);
-  --card: var(--surface-card);
+  --navy: var(--ink-800);
+  --blue: #3C415B;
+  --teal: var(--saffron-600);
+  --teal-600: var(--saffron-600);
   --ink: var(--ink-900);
   --sub: var(--gray-600);
   --line: var(--border-hairline);
-  --success: #496D21;
-  --success-bg: #F0F7EC;
-  --warning: #B5651D;
   --warning-bg: #FFF3EA;
   --error: #A13A2C;
   --error-bg: #FDF3F0;
-  --radius: 16px;
   --radius-pill: 999px;
   --shadow: 0 1px 3px rgba(20,20,40,0.06), 0 8px 24px rgba(20,20,40,0.05);
   --shadow-dark: 0 12px 40px rgba(26,26,41,0.18);
@@ -45,49 +143,27 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'IBM Plex Mono', monospace;
   --content-width: 1160px;
+  /* aliases so shadcn-style vars route to the LANDLENS palette */
+  --bg: var(--surface-page);
+  --border: var(--border-hairline);
+  --ring: var(--indigo-500);
 }
 
-@theme inline {
-  --color-background: var(--bg);
-  --color-foreground: var(--ink);
+/* Input primitive */
+.input {
+  height: 44px; width: 100%; padding: 0 14px;
+  background: var(--surface-card); color: var(--ink);
+  border: 1px solid var(--border-hairline); border-radius: 12px;
+  font-size: 14px; font-family: var(--font-sans);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
-
-* { box-sizing: border-box; }
-html, body { margin:0; padding:0; }
-body {
-  background: var(--bg);
-  color: var(--ink);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+.input:focus {
+  outline: none; border-color: var(--indigo-500);
+  box-shadow: 0 0 0 3px rgba(66, 80, 213, 0.12);
 }
-a { color: inherit; text-decoration: none; }
-button { font-family: var(--font-sans); cursor: pointer; }
-.mono { font-family: var(--font-mono); }
-::selection { background: var(--saffron-300); color: var(--ink-900); }
-:focus-visible { outline: 2px solid var(--indigo-500); outline-offset: 2px; }
-
-/* — Sarvam pill button system — */
-.btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  height: 44px; padding: 0 24px; border-radius: var(--radius-pill);
-  font-size: 14px; font-weight: 500; line-height: 1;
-  transition: all 150ms ease; border: 1px solid transparent; white-space: nowrap;
-}
-.btn:active { transform: scale(0.98); }
-.btn-primary { background: var(--ink-800); color: #fff; }
-.btn-primary:hover { background: #3a3d4a; }
-.btn-teal { background: var(--saffron-600); color: #fff; }
-.btn-teal:hover { background: #e0650a; box-shadow: 0 4px 16px rgba(248,118,19,0.3); }
-.btn-ghost { background: transparent; color: var(--ink-800); border-color: var(--border-hairline); }
-.btn-ghost:hover { border-color: var(--ink-800); background: var(--surface-raised); }
-.btn-sm { height: 36px; padding: 0 16px; font-size: 13px; }
-
-/* Card primitives — Sarvam hairline */
-.card {
-  background: var(--card); border: 1px solid var(--border-hairline);
-  border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow);
-}
+.input::placeholder { color: var(--gray-500); opacity: 0.7; }
+textarea.input { height: auto; padding: 10px 14px; }
+select.input { cursor: pointer; }
 
 /* Utility */
 .eyebrow {
@@ -100,6 +176,152 @@ button { font-family: var(--font-sans); cursor: pointer; }
   background: var(--warning-bg); border-radius: 999px; padding: 6px 12px;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-thumb { background: var(--border-hairline); border-radius: 99px; }
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv02", "cv03", "cv04";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: #f8d9bd;
+    color: #1f1f1f;
+  }
+}
+
+/* ── Geist utility (used by the sign-in component) ── */
+.font-geist {
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+/* ── Sign-in entrance animations ── */
+@keyframes fadeSlideIn {
+  to {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0px);
+  }
+}
+
+@keyframes slideRightIn {
+  to {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateX(0px);
+  }
+}
+
+@keyframes testimonialIn {
+  to {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0px) scale(1);
+  }
+}
+
+.animate-element {
+  opacity: 0;
+  filter: blur(6px);
+  transform: translateY(16px);
+  animation: fadeSlideIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-right {
+  opacity: 0;
+  filter: blur(10px);
+  transform: translateX(48px);
+  animation: slideRightIn 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-testimonial {
+  opacity: 0;
+  filter: blur(6px);
+  transform: translateY(24px) scale(0.95);
+  animation: testimonialIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-delay-100 { animation-delay: 0.1s; }
+.animate-delay-200 { animation-delay: 0.2s; }
+.animate-delay-300 { animation-delay: 0.3s; }
+.animate-delay-400 { animation-delay: 0.4s; }
+.animate-delay-500 { animation-delay: 0.5s; }
+.animate-delay-600 { animation-delay: 0.6s; }
+.animate-delay-700 { animation-delay: 0.7s; }
+.animate-delay-800 { animation-delay: 0.8s; }
+.animate-delay-900 { animation-delay: 0.9s; }
+.animate-delay-1000 { animation-delay: 1s; }
+.animate-delay-1200 { animation-delay: 1.2s; }
+.animate-delay-1400 { animation-delay: 1.4s; }
+
+/* ── Custom checkbox (sign-in "keep me signed in") ── */
+.custom-checkbox {
+  appearance: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 1.5px solid var(--input);
+  border-radius: 0.375rem;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  transition: all 150ms ease;
+  flex-shrink: 0;
+}
+.custom-checkbox:hover {
+  border-color: var(--primary);
+}
+.custom-checkbox:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.custom-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0px;
+  width: 0.3rem;
+  height: 0.6rem;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* ── Document scanline (AI processing page) ── */
+@keyframes scan {
+  0% { top: -70px; }
+  100% { top: 100%; }
+}
+.animate-scan {
+  animation: scan 2.6s linear infinite;
+}
+
+/* ── Ambient float (landing hero) ── */
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.animate-floaty {
+  animation: floaty 6s ease-in-out infinite;
+}
+
+/* ── Marquee fade edges ── */
+.fade-edges {
+  mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d8d4cc; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #c2bdb3; }
+
+/* ── Print (digital record export) ── */
+@media print {
+  aside, header, .no-print { display: none !important; }
+  main { padding: 0 !important; }
+}
