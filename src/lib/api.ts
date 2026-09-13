@@ -25,15 +25,22 @@ export async function uploadFile(file: File, lang: string) {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("lang", lang);
-  const res = await fetch(`${base()}/upload`, {
+  // When using the same-origin Next.js proxy (base === "/api"), hit /api/upload
+  // which proxies to BACKEND/api/v1/records/upload. When hitting Render directly
+  // (NEXT_PUBLIC_API_URL=https://.../api/v1), hit /records/upload.
+  const b = base().replace(/\/$/, "");
+  const url = b === "/api" ? `${b}/upload` : `${b}/records/upload`;
+  const res = await fetch(url, {
     method: "POST",
     body: fd,
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(30000),
   });
   return parse(res);
 }
 
 export async function getJobStatus(jobId: string) {
-  const res = await fetch(`${base()}/jobs/${jobId}`, { signal: AbortSignal.timeout(8000) });
+  const b = base().replace(/\/$/, "");
+  const url = b === "/api" ? `${b}/jobs/${jobId}` : `${b}/jobs/${jobId}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
   return parse(res);
 }
