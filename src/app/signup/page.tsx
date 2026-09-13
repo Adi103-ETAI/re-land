@@ -50,13 +50,18 @@ export default function SignupPage() {
 
     setLoading(true);
     try {
-      const { error: err } = await signUp(
+      const { error: err, data } = await signUp(
         formData.email,
         formData.password,
         formData.name,
         formData.role
       );
       if (err) throw err;
+      if ((data as any)?.needsConfirmation) {
+        router.push("/login?check=email");
+        router.refresh();
+        return;
+      }
       router.push("/dashboard");
       router.refresh();
     } catch (e: any) {

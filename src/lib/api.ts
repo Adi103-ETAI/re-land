@@ -1,11 +1,14 @@
-import { getAccessToken } from "@/lib/auth";
+import { getApiBase } from "@/lib/auth";
 
-function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  const token = getAccessToken();
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...extra,
-  };
+/**
+ * Pipeline API (FastAPI extraction worker).
+ * NOTE: no Supabase JWT is forwarded — the worker is reached over the
+ * same-origin Next.js proxy and performs no user auth. All persistent
+ * data lives in Supabase (see src/lib/db.ts).
+ */
+
+function base(): string {
+  return getApiBase();
 }
 
 async function parse<T = any>(res: Response): Promise<T> {
@@ -17,42 +20,20 @@ async function parse<T = any>(res: Response): Promise<T> {
   return data as T;
 }
 
+/** Send a document to the extraction pipeline. Returns { jobId }. */
 export async function uploadFile(file: File, lang: string) {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("lang", lang);
-  const res = await fetch("/api/upload", {
+  const res = await fetch(`${base()}/upload`, {
     method: "POST",
     body: fd,
-    headers: authHeaders(),
+    signal: AbortSignal.timeout(15000),
   });
   return parse(res);
 }
 
 export async function getJobStatus(jobId: string) {
-  const res = await fetch(`/api/jobs/${jobId}`, { headers: authHeaders() });
-  return parse(res);
-}
-
-export async function validateRecord(recordId: string) {
-  const res = await fetch(`/api/records/${recordId}/validate`, {
-    method: "POST",
-    headers: authHeaders(),
-  });
-  return parse(res);
-}
-
-export async function reviewTask(
-  taskId: string,
-  action: string,
-  changes?: any,
-  reason?: string,
-  officerId?: string
-) {
-  const res = await fetch(`/api/verify/${taskId}`, {
-    method: "POST",
-    headers: authHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ action, field_changes: changes, reason, officer_id: officerId }),
-  });
+  const res = await fetch(`${base()}/jobs/${jobId}`, { signal: AbortSignal.timeout(8000) });
   return parse(res);
 }

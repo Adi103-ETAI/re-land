@@ -1,5 +1,10 @@
 import type { ComponentType } from "react";
 
+/**
+ * Shape flowing through the extraction pipeline
+ * (upload → processing → extraction → validation). Filled by the
+ * backend worker response; persisted to Supabase by the processing page.
+ */
 export type CaseRecord = {
   recId: string;
   owner: string;
@@ -27,13 +32,16 @@ export type UploadedFile = {
 
 export type WFStage = { icon: ComponentType<{ className?: string }>; label: string };
 
+/** GIS parcel as rendered on the map (mirrors the `parcels` table). */
 export type Parcel = {
+  id?: string;
   lat: number;
   lng: number;
   survey: string;
   owner: string;
   area: string;
   status: "Verified" | "Pending" | "Conflict";
+  village?: string | null;
 };
 
 export type VerificationRow = {

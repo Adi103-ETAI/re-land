@@ -27,17 +27,11 @@ else:
     DATABASE_URL = _default_db_url()
 
 # Async driver mapping — sqlite URLs are already async (aiosqlite); postgres gets asyncpg.
-if DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL_ASYNC = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
-elif DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL_ASYNC = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
+if DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL_ASYNC = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1).replace("postgres://", "postgresql+asyncpg://", 1)
 else:
     DATABASE_URL_ASYNC = DATABASE_URL
 
-# Default to local SQLite so the backend runs with zero infrastructure.
-# Set DATABASE_URL to postgresql://... for production deployments.
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./landlens.db")
-DATABASE_URL_ASYNC = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1) if DATABASE_URL.startswith("postgresql://") else DATABASE_URL
 S3_BUCKET = os.getenv("S3_BUCKET", "landlens-raw")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
@@ -53,7 +47,12 @@ CORS_ORIGINS = [
 CONF_THRESHOLD = float(os.getenv("CONF_THRESHOLD", "0.90"))
 CRITICAL_FIELDS = {"surveyNo", "khataNo", "ownerName", "area"}
 
-# ── VLM provider — Gemini active (user key) ──
+
+# ── Supabase (service role — server side only; optional) ──────────────────────
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+
+# ── VLM provider (vision model used by the extraction pipeline) ──
 # gemini | sarvam | openrouter | huggingface | groq | together | replicate
 VLM_PROVIDER = os.getenv("VLM_PROVIDER", "gemini")
 VLM_API_KEY = os.getenv("VLM_API_KEY", "")

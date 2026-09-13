@@ -5,11 +5,16 @@ import { CloudUpload, FileText, Images, Map as MapIcon, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { SetupNotice } from "@/components/system/states";
+import { useRequireAuth } from "@/hooks/use-require-auth";
 import { useCaseStore } from "@/store/case-store";
+import { uploadFile } from "@/lib/api";
+import { createDocument, updateDocument, uploadDocumentFile } from "@/lib/db";
+import { getSession } from "@/lib/supabase";
 
 const STEPS = [
   { title: "Document classification", desc: "AI identifies document type and language" },
-  { title: "OCR extraction", desc: "Text extraction using VLM + Tesseract fallback" },
+  { title: "OCR extraction", desc: "Text extraction using vision models + Tesseract fallback" },
   { title: "Field recognition", desc: "Khasra number, owner name, area detected" },
   { title: "Validation", desc: "Business rules applied, risk scoring" },
   { title: "Review queue", desc: "Ready for officer verification" },
@@ -19,13 +24,24 @@ const ALLOWED = ["application/pdf", "image/jpeg", "image/png", "image/tiff"];
 
 export default function UploadPage() {
   const router = useRouter();
-  const { setUploadedFile, setJobId } = useCaseStore();
+  const { configured, session } = useRequireAuth();
+  const { setUploadedFile, setJobId, setDocumentId, reset } = useCaseStore();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  if (!configured) {
+    return (
+      <div className="mx-auto max-w-4xl">
+        <PageHeader title="Upload document" description="Upload land records for digitization and extraction." />
+        <SetupNotice what="Every uploaded document" />
+      </div>
+    );
+  }
 
   const acceptFile = (f: File | undefined | null) => {
     if (!f) return;
@@ -43,37 +59,58 @@ export default function UploadPage() {
       setError("Please select a file first");
       return;
     }
+    const currentSession = session ?? (await getSession());
+    if (!currentSession?.user) {
+      setError("Your session expired — please sign in again.");
+      return;
+    }
+
     setUploading(true);
     setError("");
+    reset();
+    setProgress("Storing file in Supabase…");
 
-    // Hold the file in the workflow store so processing/extraction can show it
-    setUploadedFile({
-      name: file.name,
-      sizeLabel: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
-      url: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
-      isImage: file.type.startsWith("image/"),
-    });
+    try {
+      // 1. File → Supabase Storage, metadata → documents table
+      const { path } = await uploadDocumentFile(file, currentSession.user.id);
+      const doc = await createDocument({
+        owner_id: currentSession.user.id,
+        filename: file.name,
+        storage_path: path,
+        mime_type: file.type || "application/octet-stream",
+        file_size: file.size,
+        status: "processing",
+      });
+      setDocumentId(doc.id);
 
-    // Fire the backend request without blocking navigation — if the FastAPI
-    // service is reachable we pick up its job id; otherwise processing falls
-    // back to the simulated pipeline automatically.
-    const formData = new FormData();
-    formData.append("file", file);
-    fetch("/api/upload", { method: "POST", body: formData, signal: AbortSignal.timeout(4000) })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((result) => {
+      // Local preview for the processing/extraction pages
+      setUploadedFile({
+        name: file.name,
+        sizeLabel: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+        url: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+        isImage: file.type.startsWith("image/"),
+      });
+
+      // 2. Hand the file to the extraction pipeline (best effort — the
+      //    record stays "processing" in Supabase if the worker is offline)
+      setProgress("Sending to the extraction pipeline…");
+      try {
+        const result = await uploadFile(file, "auto");
         const id = result?.jobId ?? result?.job_id;
         if (id) {
           setJobId(id);
-          try {
-            sessionStorage.setItem("landlens_jobId", id);
-          } catch {
-            /* private mode — store stays in memory */
-          }
+          await updateDocument(doc.id, { job_id: id });
         }
-      })
-      .catch(() => setJobId(null));
-    router.push("/processing");
+      } catch {
+        setJobId(null);
+      }
+
+      router.push("/processing");
+    } catch (e: any) {
+      setError(e?.message || "Upload failed. Please try again.");
+      setUploading(false);
+      setProgress("");
+    }
   };
 
   return (
@@ -149,6 +186,7 @@ export default function UploadPage() {
                 }}
                 className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 aria-label="Remove file"
+                disabled={uploading}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -166,7 +204,7 @@ export default function UploadPage() {
             disabled={uploading || !file}
             className="mt-6 h-12 w-full rounded-2xl text-[15px] shadow-md shadow-primary/20"
           >
-            {uploading ? "Uploading…" : "Start extraction"}
+            {uploading ? progress || "Uploading…" : "Start extraction"}
           </Button>
         </CardContent>
       </Card>

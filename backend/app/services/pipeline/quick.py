@@ -8,7 +8,7 @@ from app.services.ocr.engine import OCREngine
 
 logger = logging.getLogger(__name__)
 
-# Map Gemini output keys → CaseRecord + confidence
+# Map vision-model output keys → record fields
 FIELD_MAP = {
     "surveyNo": "survey",
     "khataNo": "khata",
@@ -22,13 +22,13 @@ FIELD_MAP = {
     "mutationDate": "mutationDate",
 }
 
-def _to_record(recId: str, docLabel: str, gem: dict, lang: str):
-    # gem is {field: {value, confidence}} or {field: value}
+def _to_record(recId: str, docLabel: str, extracted: dict, lang: str):
+    # extracted is {field: {value, confidence}} or {field: value}
     def val(k):
-        v = gem.get(k)
+        v = extracted.get(k)
         if isinstance(v, dict): return v.get("value"), v.get("confidence", 0.9)
         return v, 0.9 if v else 0
-    # Build CaseRecord + fields array with confidence
+    # Build record + fields array with confidence
     owner, c1 = val("ownerName")
     survey, c2 = val("surveyNo")
     khata, c3 = val("khataNo")
@@ -41,31 +41,33 @@ def _to_record(recId: str, docLabel: str, gem: dict, lang: str):
     khasra, c10 = val("khasraNo")
     # Normalize area string to float for record
     import re
-    area_num = 2.45
+    area_num = None
     if area_s:
         m = re.search(r"(\d+\.?\d*)", str(area_s))
         if m: area_num = float(m.group(1))
     rec = {
         "recId": recId,
-        "owner": owner or "Unknown",
+        "owner": owner or "—",
         "survey": survey or "—",
-        "khata": khata or "KH-00000",
+        "khata": khata or "—",
         "khasra": khasra or "—",
-        "village": village or "Wagholi",
-        "tehsil": tehsil or "Haveli",
-        "district": district or "Pune",
+        "village": village or "—",
+        "tehsil": tehsil or "—",
+        "district": district or "—",
         "area": area_num,
-        "areaDb": round(area_num - 0.05, 2) if c4 and c4 < 0.95 else area_num,
-        "classification": cls or "Agricultural",
+        # Reference area starts equal to the detected area — the validation
+        # engine flags real mismatches, none are fabricated here.
+        "areaDb": area_num,
+        "classification": cls or "—",
         "mutationDate": mut or "—",
         "lang": lang,
         "docLabel": docLabel,
-        "dupSim": 12,
+        "dupSim": 0,
         "dupMatch": None,
     }
     # Validation score
-    has_mismatch = abs(rec["area"] - rec["areaDb"]) > 0.001
-    score = max(70, round(100 - (6 if has_mismatch else 0) - (2 if (c9 or 0) < 0.7 else 0)))
+    low_conf = [c for c in (c1, c2, c3, c4, c9) if c and c < 0.7]
+    score = max(70, round(100 - (2 if low_conf else 0)))
     rec["validationScore"] = score
     # Fields with confidence + normalized bbox for extraction UI
     def parse_bbox(raw):
@@ -73,7 +75,7 @@ def _to_record(recId: str, docLabel: str, gem: dict, lang: str):
             return None
         try:
             ymin, xmin, ymax, xmax = [float(x) for x in raw]
-            # Gemini returns 0-1000 normalized
+            # Some models return 0-1000 normalized coordinates
             if max(ymin, xmin, ymax, xmax) <= 1000:
                 return {"ymin": ymin/1000, "xmin": xmin/1000, "ymax": ymax/1000, "xmax": xmax/1000}
             return {"ymin": ymin, "xmin": xmin, "ymax": ymax, "xmax": xmax}
@@ -81,7 +83,7 @@ def _to_record(recId: str, docLabel: str, gem: dict, lang: str):
 
     fields = []
     for gk, rk in FIELD_MAP.items():
-        raw = gem.get(gk)
+        raw = extracted.get(gk)
         if isinstance(raw, dict):
             v = raw.get("value")
             c = raw.get("confidence", 0.0)
@@ -91,11 +93,8 @@ def _to_record(recId: str, docLabel: str, gem: dict, lang: str):
         # Hide bbox if not found / confidence 0 / null value
         show = v is not None and str(v).strip() not in ("", "—", "-", "null") and float(c or 0) > 0
         bbox = parse_bbox(bbox_raw) if show else None
-        # Fallback: if Gemini didn't return bbox but has value, don't show dummy — leave null so frontend hides marking
-        if show and not bbox:
-            bbox = None
         val_str = str(v) if v is not None and str(v).strip() not in ("", "null") else "—"
-        fields.append({"key": rk, "value": val_str, "confidence": float(c or 0), "bbox": bbox, "source": "gemini" if c and c>0 else "fallback"})
+        fields.append({"key": rk, "value": val_str, "confidence": float(c or 0), "bbox": bbox, "source": "ai" if c and c > 0 else "ocr"})
     return rec, fields, score
 
 async def run_pipeline(job_id: str, file_path: str, lang: str = "Marathi"):
@@ -130,25 +129,25 @@ async def run_pipeline(job_id: str, file_path: str, lang: str = "Marathi"):
             logger.debug("OCREngine recognized %d blocks for %s", len(ocr_results), file_path)
         except Exception as e:
             logger.warning("OCREngine failed: %s", e)
-        # Call Gemini VLM (or fallback)
-        gem = None
+        # Vision-model extraction
+        extracted = None
         if ENABLE_VLM and VLM_API_KEY:
             from app.services.vlm.providers import extract_via_vlm
             set_progress(job_id, "extracting", 55)
-            gem = await extract_via_vlm(file_path, VLM_PROVIDER, VLM_API_KEY, VLM_MODEL)
-        if not gem:
-            # Fallback deterministic mock based on filename (when Gemini offline)
-            import hashlib
-            h = int(hashlib.md5(os.path.basename(file_path).encode()).hexdigest()[:8], 16)
-            gem = {
-                "surveyNo": {"value": f"{h%90+5}/{(h%6)+1}", "confidence": 0.6},
-                "ownerName": {"value": "Needs Review", "confidence": 0.5},
-                "area": {"value": f"{0.6+h%350/100:.2f} Hectare", "confidence": 0.6},
-            }
+            extracted = await extract_via_vlm(file_path, VLM_PROVIDER, VLM_API_KEY, VLM_MODEL)
+        if not extracted:
+            # No fabricated demo output — fail honestly so the officer knows
+            # nothing was extracted instead of reviewing made-up values.
+            set_error(
+                job_id,
+                "Field extraction is not available (no vision-model API key configured or the provider "
+                "is unreachable). Configure VLM_API_KEY in the backend .env and retry — no record was saved.",
+            )
+            return None
         set_progress(job_id, "validating", 85)
         await asyncio.sleep(0.2)
-        recId = f"LR-MH-2026-{str(uuid.uuid4().int)[:6]}"
-        rec, fields, score = _to_record(recId, os.path.basename(file_path), gem, lang)
+        recId = f"LR-{uuid.uuid4().int % 1000000:06d}"
+        rec, fields, score = _to_record(recId, os.path.basename(file_path), extracted, lang)
         record = {**rec, "fields": fields, "score": score}
         set_done(job_id, record)
         return record

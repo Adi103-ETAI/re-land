@@ -149,8 +149,7 @@ export default function Landing() {
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
                 </span>
-                SIH 2026 PROTOTYPE
-                <span className="hidden sm:inline">&nbsp;· LAND RECORD MODERNIZATION</span>
+                LAND RECORD MODERNIZATION PLATFORM
               </Badge>
               <h1 className="max-w-xl text-4xl font-semibold leading-[1.08] tracking-tight sm:text-5xl lg:text-[3.4rem]">
                 From faded registers to{" "}
@@ -417,7 +416,7 @@ export default function Landing() {
             </span>
             LANDLENS
           </div>
-          <p>SIH 2026 prototype · All records shown are illustrative demo data.</p>
+          <p>LANDLENS — land record digitization with a human in the loop.</p>
         </div>
       </footer>
     </div>

@@ -88,11 +88,11 @@ export default function Sidebar() {
       </div>
       <div className="mx-1 mb-5 mt-4 inline-flex items-center gap-2 self-start rounded-full bg-white/[0.07] px-3 py-1.5 text-[11px] font-medium text-sidebar-foreground/75">
         <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-        Revenue Officer · Pune
+        Officer console
       </div>
       <SidebarNav />
       <div className="mt-auto px-3 pb-2 pt-6 text-[11px] text-sidebar-foreground/35">
-        LANDLENS v2.0 · SIH 2026 demo
+        LANDLENS v2.0
       </div>
     </aside>
   );

@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   title: "LANDLENS — Intelligent Land Record Digitization",
   description:
     "AI-powered digitization, validation and verification of India's legacy land records — from a faded 1962 register to a verified digital record, with a human in the loop wherever it matters.",
-  keywords: ["LANDLENS", "land records", "digitization", "OCR", "SIH 2026", "cadastral"],
+  keywords: ["LANDLENS", "land records", "digitization", "OCR", "cadastral"],
   icons: {
     icon: "/favicon.ico",
   },

@@ -1,14 +1,15 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowRight,
   ArrowUpRight,
   BrainCircuit,
   CheckCircle2,
   FileText,
   History,
+  Inbox,
   ShieldAlert,
+  ShieldCheck,
   Upload,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -17,34 +18,63 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { getSession, getUserProfile, type Profile } from "@/lib/supabase";
-import { useCaseStore } from "@/store/case-store";
+import { EmptyState, SetupNotice } from "@/components/system/states";
+import { useRequireAuth } from "@/hooks/use-require-auth";
+import { getUserProfile, type Profile } from "@/lib/supabase";
+import { getDashboardStats, listAuditLogs, listRecords, type AuditLogRow, type DashboardStats, type RecordRow } from "@/lib/db";
+
+const ACTIVITY_META: Record<string, { icon: typeof FileText; ok: boolean }> = {
+  RECORD_CREATED: { icon: FileText, ok: true },
+  EXTRACTION_COMPLETED: { icon: BrainCircuit, ok: true },
+  VERIFICATION_ACCEPTED: { icon: ShieldCheck, ok: true },
+  VERIFICATION_REJECTED: { icon: ShieldAlert, ok: false },
+  VALIDATION_FAILED: { icon: ShieldAlert, ok: false },
+};
 
 export default function DashboardPage() {
+  const { ready, session, configured } = useRequireAuth();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [activity, setActivity] = useState<AuditLogRow[]>([]);
+  const [latestRecord, setLatestRecord] = useState<RecordRow | null>(null);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const { currentCase } = useCaseStore();
+
+  const load = useCallback(async () => {
+    if (!session?.user) return;
+    setLoading(true);
+    setError("");
+    try {
+      const [p, s, logs, recs] = await Promise.all([
+        getUserProfile(session.user.id),
+        getDashboardStats(),
+        listAuditLogs(5),
+        listRecords(1),
+      ]);
+      setProfile(p);
+      setStats(s);
+      setActivity(logs);
+      setLatestRecord(recs[0] ?? null);
+    } catch (e: any) {
+      setError(e?.message || "Could not load dashboard data");
+    } finally {
+      setLoading(false);
+    }
+  }, [session?.user?.id]);
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const session = await getSession();
-      if (!session?.user) {
-        window.location.href = "/login";
-        return;
-      }
-      const p = await getUserProfile(session.user.email);
-      if (mounted) {
-        setProfile(p);
-        setLoading(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    if (ready && session) load();
+  }, [ready, session, load]);
 
-  if (loading) {
+  if (!configured) {
+    return (
+      <div>
+        <PageHeader title="Dashboard" description="Your land record digitization overview." />
+        <SetupNotice what="Everything on this page" />
+      </div>
+    );
+  }
+  if (!ready || loading) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-9 w-72" />
@@ -58,25 +88,42 @@ export default function DashboardPage() {
     );
   }
 
-  const stats = [
-    { label: "Total Documents", value: 24, icon: FileText, sub: "+3 this week", tone: "text-foreground" },
-    { label: "Processing Jobs", value: 3, icon: BrainCircuit, sub: "2 queued · 1 running", tone: "text-foreground" },
-    { label: "Pending Verification", value: 12, icon: CheckCircle2, sub: "avg. review 4.2 min", tone: "text-foreground" },
-    { label: "High Risk Records", value: 2, icon: ShieldAlert, sub: "needs attention", tone: "text-destructive" },
+  const statsCards = [
+    {
+      label: "Documents",
+      value: stats?.totalDocuments ?? 0,
+      icon: FileText,
+      sub: `${stats?.processingJobs ?? 0} processing now`,
+      tone: "text-foreground",
+    },
+    {
+      label: "Records extracted",
+      value: (stats?.validationCounts ?? {})["safe"] + (stats?.validationCounts ?? {})["review"] + (stats?.validationCounts ?? {})["high_risk"] + (stats?.validationCounts ?? {})["pending"] || 0,
+      icon: BrainCircuit,
+      sub: "across all uploads",
+      tone: "text-foreground",
+    },
+    {
+      label: "Pending verification",
+      value: stats?.pendingVerification ?? 0,
+      icon: CheckCircle2,
+      sub: "waiting on an officer",
+      tone: "text-foreground",
+    },
+    {
+      label: "High-risk records",
+      value: stats?.highRiskRecords ?? 0,
+      icon: ShieldAlert,
+      sub: "needs attention",
+      tone: "text-destructive",
+    },
   ];
 
+  const total = Math.max(1, (stats?.validationCounts ?? {})["pending"] + (stats?.validationCounts ?? {})["safe"] + (stats?.validationCounts ?? {})["review"] + (stats?.validationCounts ?? {})["high_risk"]);
   const pipeline = [
-    { stage: "Uploaded", count: 24, pct: 100 },
-    { stage: "AI processed", count: 18, pct: 75 },
-    { stage: "Validated", count: 15, pct: 62 },
-    { stage: "Verified", count: 12, pct: 50 },
-  ];
-
-  const activity = [
-    { action: "Document uploaded", detail: "Revenue Survey No. 45.pdf", time: "2 min ago", ok: true },
-    { action: "Extraction completed", detail: `Record ${currentCase.recId} · confidence 94%`, time: "15 min ago", ok: true },
-    { action: "Verification pending", detail: "High-risk record #12850 flagged", time: "1 hr ago", ok: false },
-    { action: "Record approved", detail: "Khasra No. 234 by Verifier A", time: "2 hrs ago", ok: true },
+    { stage: "Uploaded", count: stats?.totalDocuments ?? 0, pct: 100 },
+    { stage: "Extracted", count: (stats?.validationCounts ?? {})["pending"] ?? 0, pct: Math.round((((stats?.validationCounts ?? {})["pending"] ?? 0) / total) * 100) },
+    { stage: "Accepted", count: stats?.completedRecords ?? 0, pct: Math.round((((stats?.completedRecords ?? 0) / total) * 100)) },
   ];
 
   return (
@@ -93,9 +140,15 @@ export default function DashboardPage() {
         }
       />
 
+      {error && (
+        <div className="mb-5 rounded-2xl border border-destructive/30 bg-[var(--destructive-soft)] px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
       {/* Stats */}
       <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {stats.map(({ label, value, icon: Icon, sub, tone }) => (
+        {statsCards.map(({ label, value, icon: Icon, sub, tone }) => (
           <Card key={label} className="border-border/80 transition-all hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/5">
             <CardContent className="p-5">
               <div className="mb-3 flex items-center justify-between">
@@ -139,36 +192,53 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* Current case + activity */}
+        {/* Latest record + activity */}
         <div className="space-y-5">
-          <Card className="border-border/80 bg-sidebar text-sidebar-foreground">
-            <CardContent className="p-5">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-[11px] font-bold tracking-wide text-sidebar-foreground/50">CURRENT CASE</span>
-                <Badge className="rounded-md bg-primary px-2 py-0.5 text-[10px] font-bold">IN REVIEW</Badge>
-              </div>
-              <div className="font-mono text-lg font-bold">{currentCase.recId}</div>
-              <p className="mb-4 text-xs text-sidebar-foreground/60">{currentCase.docLabel}</p>
-              <div className="grid grid-cols-2 gap-3 text-[13px]">
-                {[
-                  ["Owner", currentCase.owner],
-                  ["Survey no.", currentCase.survey],
-                  ["Village", currentCase.village],
-                  ["Area", `${currentCase.area} Ha`],
-                ].map(([k, v]) => (
-                  <div key={k} className="rounded-xl bg-white/[0.06] px-3 py-2">
-                    <div className="text-[10px] text-sidebar-foreground/50">{k}</div>
-                    <div className="font-mono font-semibold">{v}</div>
-                  </div>
-                ))}
-              </div>
-              <Link href="/validation">
-                <Button size="sm" variant="secondary" className="mt-4 w-full rounded-full">
-                  Open validation center <ArrowUpRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
+          {latestRecord ? (
+            <Card className="border-border/80 bg-sidebar text-sidebar-foreground">
+              <CardContent className="p-5">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-[11px] font-bold tracking-wide text-sidebar-foreground/50">LATEST RECORD</span>
+                  <Badge className="rounded-md bg-primary px-2 py-0.5 text-[10px] font-bold">
+                    {latestRecord.verification_status.toUpperCase()}
+                  </Badge>
+                </div>
+                <div className="font-mono text-lg font-bold">{latestRecord.record_code ?? latestRecord.id.slice(0, 8)}</div>
+                <p className="mb-4 text-xs text-sidebar-foreground/60">
+                  Survey {latestRecord.survey_no ?? "—"} · {latestRecord.village ?? "—"}
+                </p>
+                <div className="grid grid-cols-2 gap-3 text-[13px]">
+                  {[
+                    ["Owner", latestRecord.owner_name],
+                    ["Survey no.", latestRecord.survey_no],
+                    ["Village", latestRecord.village],
+                    ["Area", latestRecord.area_detected != null ? `${latestRecord.area_detected} Ha` : "—"],
+                  ].map(([k, v]) => (
+                    <div key={k} className="rounded-xl bg-white/[0.06] px-3 py-2">
+                      <div className="text-[10px] text-sidebar-foreground/50">{k}</div>
+                      <div className="truncate font-mono font-semibold">{v || "—"}</div>
+                    </div>
+                  ))}
+                </div>
+                <Link href={`/records/${latestRecord.id}`}>
+                  <Button size="sm" variant="secondary" className="mt-4 w-full rounded-full">
+                    Open record <ArrowUpRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+          ) : (
+            <EmptyState
+              icon={Inbox}
+              title="No records yet"
+              description="Upload your first land record document to start the digitization pipeline."
+              action={
+                <Link href="/upload">
+                  <Button size="sm" className="rounded-full">Upload document</Button>
+                </Link>
+              }
+            />
+          )}
 
           <Card className="border-border/80">
             <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
@@ -180,20 +250,34 @@ export default function DashboardPage() {
               </Link>
             </CardHeader>
             <CardContent className="space-y-1 pt-1">
-              {activity.map((a, i) => (
-                <div key={i} className="flex items-start gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-muted/60">
-                  {a.ok ? (
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]" />
-                  ) : (
-                    <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-semibold leading-tight">{a.action}</div>
-                    <div className="truncate text-xs text-muted-foreground">{a.detail}</div>
-                  </div>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">{a.time}</span>
-                </div>
-              ))}
+              {activity.length === 0 ? (
+                <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                  No activity yet — actions will appear here as the team works.
+                </p>
+              ) : (
+                activity.map((a) => {
+                  const meta = ACTIVITY_META[a.action] ?? { icon: FileText, ok: true };
+                  const Icon = meta.icon;
+                  return (
+                    <div key={a.id} className="flex items-start gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-muted/60">
+                      {meta.ok ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[var(--success)]" />
+                      ) : (
+                        <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13px] font-semibold leading-tight">{a.action.replace(/_/g, " ")}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {a.entity_type} · {a.entity_id ?? "—"}
+                        </div>
+                      </div>
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        {new Date(a.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
             </CardContent>
           </Card>
         </div>

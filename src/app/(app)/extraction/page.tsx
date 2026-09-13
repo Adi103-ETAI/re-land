@@ -1,13 +1,14 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowRight, BrainCircuit, TriangleAlert } from "lucide-react";
+import { ArrowRight, BrainCircuit, Inbox, TriangleAlert } from "lucide-react";
 import Tracker from "@/components/workflow/Tracker";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState, SetupNotice } from "@/components/system/states";
 import { useCaseStore } from "@/store/case-store";
+import { useRequireAuth } from "@/hooks/use-require-auth";
 
 const FIELD_DEFS: Record<string, string> = {
   owner: "Owner name",
@@ -24,30 +25,48 @@ const FIELD_DEFS: Record<string, string> = {
 
 export default function Extraction() {
   const { currentCase, uploadedFile, fields } = useCaseStore();
+  const { configured } = useRequireAuth();
   const [hl, setHl] = useState<string | null>(null);
 
-  const dynamicFields = fields
-    ? fields.map((f) => ({
-        key: f.key,
-        label: FIELD_DEFS[f.key] || f.key.toUpperCase(),
-        conf: Math.round((f.confidence ?? 0) * 100),
-        value: f.value,
-        source: f.source,
-        bbox: f.bbox || null,
-      }))
-    : [
-        { key: "owner", label: "Owner name", conf: 98, value: currentCase.owner, source: "mock", bbox: null },
-        { key: "survey", label: "Survey number", conf: 96, value: currentCase.survey, source: "mock", bbox: null },
-        { key: "khata", label: "Khata number", conf: 94, value: currentCase.khata, source: "mock", bbox: null },
-        { key: "village", label: "Village", conf: 99, value: currentCase.village, source: "mock", bbox: null },
-        { key: "tehsil", label: "Tehsil", conf: 97, value: currentCase.tehsil, source: "mock", bbox: null },
-        { key: "district", label: "District", conf: 99, value: currentCase.district, source: "mock", bbox: null },
-        { key: "area", label: "Land area", conf: 91, value: currentCase.area + " Hectare", source: "mock", bbox: null },
-        { key: "classification", label: "Classification", conf: 87, value: currentCase.classification, source: "mock", bbox: null },
-        { key: "mutationDate", label: "Mutation date", conf: 64, value: currentCase.mutationDate, source: "mock", bbox: null },
-      ];
+  if (!configured) {
+    return (
+      <div>
+        <PageHeader title="Extracted record" description="AI-extracted information from the scanned document." />
+        <SetupNotice what="Extraction output" />
+      </div>
+    );
+  }
 
-  const isMock = !fields;
+  if (!fields || !currentCase) {
+    return (
+      <div>
+        <PageHeader
+          title="Extracted record"
+          description="Run a document through the pipeline to see its extracted fields here."
+        />
+        <EmptyState
+          icon={Inbox}
+          title="Nothing extracted yet"
+          description="Upload a land record document — once the pipeline finishes, every detected field with its confidence and location on the page appears here."
+          action={
+            <Link href="/upload">
+              <Button className="rounded-full">Upload a document</Button>
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  const dynamicFields = fields.map((f) => ({
+    key: f.key,
+    label: FIELD_DEFS[f.key] || f.key.toUpperCase(),
+    conf: Math.round((f.confidence ?? 0) * 100),
+    value: f.value,
+    source: f.source,
+    bbox: f.bbox || null,
+  }));
+
   const visibleBboxes = dynamicFields.filter(
     (f) => f.bbox && f.conf > 0 && f.value !== "—" && f.value !== "-"
   );
@@ -56,7 +75,7 @@ export default function Extraction() {
     <div>
       <PageHeader
         title="Before vs after — AI extracted information"
-        description={`Hover a field to locate it. ${isMock ? "Sample data" : `${visibleBboxes.length} fields located on document`}`}
+        description={`Hover a field to locate it. ${visibleBboxes.length} fields located on the document.`}
         actions={
           <Link href="/validation">
             <Button className="rounded-full">
@@ -67,21 +86,13 @@ export default function Extraction() {
       />
       <Tracker activeIdx={3} />
 
-      {isMock ? (
-        <Badge variant="outline" className="mb-4 gap-1.5 rounded-full border-warning/40 bg-[var(--warning-soft)] px-3 py-1.5 text-xs font-semibold text-warning">
-          <TriangleAlert className="h-3.5 w-3.5" /> Sample data — upload a document to see real extraction
-        </Badge>
-      ) : (
-        <Badge className="mb-4 gap-1.5 rounded-full bg-[var(--success-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--success)] hover:bg-[var(--success-soft)]">
-          <BrainCircuit className="h-3.5 w-3.5" /> Live Gemini extraction — {visibleBboxes.length} markings on document
-        </Badge>
-      )}
+      <Badge className="mb-4 gap-1.5 rounded-full bg-[var(--success-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--success)] hover:bg-[var(--success-soft)]">
+        <BrainCircuit className="h-3.5 w-3.5" /> Live AI extraction — {visibleBboxes.length} markings on document
+      </Badge>
 
       <div className="mb-3 flex items-start gap-2.5 rounded-2xl border border-warning/25 bg-[var(--warning-soft)] px-4 py-3 text-sm font-medium text-warning">
-        <BrainCircuit className="mt-0.5 h-4 w-4 shrink-0" />
-        {isMock
-          ? "Showing sample — an upload will replace this with real Gemini extraction + bounding boxes."
-          : "Markings are shown only where the model found the field — missing fields have no box."}
+        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+        Markings are shown only where the model found the field — missing fields have no box.
       </div>
 
       <div className="mb-2.5 grid grid-cols-2 gap-2.5 text-[11px] font-bold tracking-[0.12em] text-muted-foreground">
@@ -163,7 +174,7 @@ export default function Extraction() {
                   </span>
                   <span className="shrink-0 font-mono text-xs font-bold" style={{ color: confColor }}>
                     {f.conf}%
-                    {f.source !== "mock" && (
+                    {f.source && (
                       <span className="font-normal text-muted-foreground">
                         {" "}
                         · {f.source}

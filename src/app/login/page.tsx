@@ -56,26 +56,26 @@ export default function LoginPage() {
       testimonials={TESTIMONIALS}
       onSignIn={handleSignIn}
       onGoogleSignIn={() =>
-        setError("Google SSO is not available in this prototype — use officer credentials.")
+        setError("Google SSO is not enabled for this deployment — use your officer credentials.")
       }
       onResetPassword={() =>
-        setError("Password reset is handled by your district administrator in this prototype.")
+        setError("Password resets are handled by your district administrator.")
       }
       onCreateAccount={() => router.push("/signup")}
       loading={loading}
       error={error}
       footerNote={
-        <div className="rounded-2xl border border-indigo-400/20 bg-indigo-400/10 p-4 backdrop-blur-md">
-          <p className="mb-2 text-xs font-semibold text-indigo-600">Demo Credentials</p>
-          <div className="space-y-1 text-xs text-muted-foreground">
-            <p>
-              <strong>Email:</strong> operator@landlens.local
-            </p>
-            <p>
-              <strong>Password:</strong> operator123
-            </p>
-          </div>
-        </div>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Accounts are managed through Supabase Auth. New officers can{" "}
+          <button
+            type="button"
+            className="font-semibold text-primary underline-offset-2 hover:underline"
+            onClick={() => router.push("/signup")}
+          >
+            create an account
+          </button>{" "}
+          with an invitation code from their department.
+        </p>
       }
     />
   );

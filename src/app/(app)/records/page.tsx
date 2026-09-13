@@ -1,247 +1,203 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
-import type { Profile } from "@/lib/supabase";
+import { Inbox } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState, SetupNotice } from "@/components/system/states";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { useRequireAuth } from "@/hooks/use-require-auth";
+import { listRecords, type RecordRow } from "@/lib/db";
 
-interface CaseRecord {
-  id: string;
-  document_id: string;
-  page_number: number;
-  fields: Record<string, any>;
-  confidence_score: number;
-  validation_status: string;
-  verification_status: string;
-  created_at: string;
-}
-
-// Demo rows shown when the backend has no records yet
-const DEMO_RECORDS: CaseRecord[] = [
-  {
-    id: "1",
-    document_id: "doc-001",
-    page_number: 1,
-    fields: { surveyNo: "45", khataNo: "234", ownerName: "Rajesh Kumar", area: "2.5 acres" },
-    confidence_score: 0.94,
-    validation_status: "safe",
-    verification_status: "pending",
-    created_at: "2026-09-12T08:30:00Z",
-  },
-  {
-    id: "2",
-    document_id: "doc-001",
-    page_number: 2,
-    fields: { surveyNo: "46", khataNo: "235", ownerName: "Sita Devi", area: "1.8 acres" },
-    confidence_score: 0.87,
-    validation_status: "review",
-    verification_status: "pending",
-    created_at: "2026-09-12T08:31:00Z",
-  },
-  {
-    id: "3",
-    document_id: "doc-002",
-    page_number: 1,
-    fields: { surveyNo: "47", khataNo: "236", ownerName: "Amit Sharma", area: "3.2 acres" },
-    confidence_score: 0.91,
-    validation_status: "safe",
-    verification_status: "accepted",
-    created_at: "2026-09-12T07:45:00Z",
-  },
+const FILTERS = [
+  { value: "all", label: "All records" },
+  { value: "safe", label: "Safe" },
+  { value: "review", label: "Needs review" },
+  { value: "high_risk", label: "High risk" },
 ];
 
+const statusBadge: Record<string, string> = {
+  safe: "bg-green-100 text-green-800",
+  review: "bg-yellow-100 text-yellow-800",
+  high_risk: "bg-red-100 text-red-800",
+  pending: "bg-gray-100 text-gray-800",
+};
+
+const verBadge: Record<string, string> = {
+  pending: "bg-gray-100 text-gray-800",
+  accepted: "bg-blue-100 text-blue-800",
+  rejected: "bg-red-100 text-red-800",
+  corrected: "bg-purple-100 text-purple-800",
+  escalated: "bg-orange-100 text-orange-800",
+};
+
 export default function RecordsPage() {
-  const [records, setRecords] = useState<CaseRecord[]>([]);
+  const { ready, session, configured } = useRequireAuth();
+  const [records, setRecords] = useState<RecordRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [filter, setFilter] = useState<string>("all");
-  const [profile, setProfile] = useState<Profile | null>(null);
 
-  useEffect(() => {
-    const fetchRecords = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        window.location.href = "/login";
-        return;
-      }
-
-      // Fetch profile
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
-      setProfile(profileData as Profile);
-
-      // Fetch records from the backend API; fall back to demo rows
-      try {
-        const res = await fetch("/api/records", {
-          headers: { Authorization: `Bearer ${localStorage.getItem("landlens.access_token") ?? ""}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const apiRecords: CaseRecord[] = (data.records ?? []).map((r: any, i: number) => ({
-            id: String(r.recId ?? i),
-            document_id: String(r.documentId ?? "—"),
-            page_number: 1,
-            fields: Object.fromEntries((r.fields ?? []).map((f: any) => [f.key, f.value])),
-            confidence_score: r.extractionConfidence ?? 0.9,
-            validation_status: r.status === "completed" ? "safe" : "review",
-            verification_status: "pending",
-            created_at: r.validation?.runAt ?? new Date().toISOString(),
-          }));
-          setRecords(apiRecords.length > 0 ? apiRecords : DEMO_RECORDS);
-        } else {
-          setRecords(DEMO_RECORDS);
-        }
-      } catch {
-        setRecords(DEMO_RECORDS);
-      }
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setRecords(await listRecords(200));
+    } catch (e: any) {
+      setError(e?.message || "Could not load records");
+    } finally {
       setLoading(false);
-    };
-
-    fetchRecords();
+    }
   }, []);
 
-  const getStatusBadge = (status: string) => {
-    const styles: { [key: string]: string } = {
-      safe: "bg-green-100 text-green-800",
-      review: "bg-yellow-100 text-yellow-800",
-      high_risk: "bg-red-100 text-red-800",
-      pending: "bg-gray-100 text-gray-800",
-      accepted: "bg-blue-100 text-blue-800",
-      rejected: "bg-red-100 text-red-800",
-    };
-    return styles[status] || "bg-gray-100 text-gray-800";
-  };
+  useEffect(() => {
+    if (ready && session?.user) load();
+  }, [ready, session, load]);
 
-  const filteredRecords = filter === "all" 
-    ? records 
-    : records.filter(r => r.validation_status === filter);
-
-  if (loading) {
+  if (!configured) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--surface-page)]">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-[var(--teal-600)] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-[var(--gray-600)]">Loading records...</p>
-        </div>
+      <div>
+        <PageHeader title="Extracted records" description="Every record digitized by the pipeline." />
+        <SetupNotice what="The records registry" />
       </div>
     );
   }
 
+  const filteredRecords =
+    filter === "all" ? records : records.filter((r) => r.validation_status === filter);
+
   return (
-    <div className="min-h-screen bg-[var(--surface-page)]">
-      {/* Header */}
-      <header className="bg-white border-b border-[var(--border-hairline)] px-8 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center gap-2 font-extrabold text-lg text-[var(--ink-800)]">
-            <span className="w-2.5 h-2.5 rounded-[3px] bg-gradient-to-br from-[var(--saffron-600)] to-[var(--indigo-500)]" />
-            LANDLENS
+    <div>
+      <PageHeader
+        title="Extracted records"
+        description="View and manage digitized land records — all stored in Supabase."
+        actions={
+          <Link href="/upload">
+            <Button className="rounded-full">Upload New Document</Button>
           </Link>
-          <nav className="flex gap-6 text-sm">
-            <Link href="/dashboard" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Dashboard</Link>
-            <Link href="/upload" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Upload</Link>
-            <Link href="/records" className="font-medium text-[var(--ink-800)]">Records</Link>
-            <Link href="/verification" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Verification</Link>
-          </nav>
-        </div>
-      </header>
+        }
+      />
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-8 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-[var(--font-serif)] text-[var(--ink-900)] mb-1">Extracted Records</h1>
-            <p className="text-[var(--gray-600)]">View and manage digitized land records</p>
+      {error && (
+        <div className="mb-5 rounded-2xl border border-destructive/30 bg-[var(--destructive-soft)] px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="mb-6 flex flex-wrap gap-2">
+        {FILTERS.map(({ value, label }) => (
+          <button
+            key={value}
+            onClick={() => setFilter(value)}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+              filter === value
+                ? "bg-primary text-primary-foreground"
+                : "border border-border bg-card text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Records Table */}
+      <div className="card overflow-hidden rounded-2xl border border-border bg-card">
+        {loading ? (
+          <div className="space-y-3 p-6">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-12 rounded-xl" />
+            ))}
           </div>
-          <Link href="/upload" className="btn btn-teal">
-            Upload New Document
-          </Link>
-        </div>
-
-        {/* Filters */}
-        <div className="flex gap-2 mb-6 flex-wrap">
-          {[
-            { value: "all", label: "All Records" },
-            { value: "safe", label: "Safe" },
-            { value: "review", label: "Needs Review" },
-            { value: "high_risk", label: "High Risk" },
-          ].map(({ value, label }) => (
-            <button
-              key={value}
-              onClick={() => setFilter(value)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filter === value
-                  ? "bg-[var(--teal-600)] text-white"
-                  : "bg-white text-[var(--gray-600)] hover:bg-[var(--gray-50)] border border-[var(--border-hairline)]"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Records Table */}
-        <div className="card overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-[var(--surface-raised)] border-b border-[var(--border-hairline)]">
-              <tr>
-                <th className="text-left px-6 py-3 text-xs font-medium text-[var(--gray-600)]">Survey No</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-[var(--gray-600)]">Khata No</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-[var(--gray-600)]">Owner Name</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-[var(--gray-600)]">Area</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-[var(--gray-600)]">Confidence</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-[var(--gray-600)]">Status</th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-[var(--gray-600)]">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border-hairline)]">
-              {filteredRecords.map((record) => (
-                <tr key={record.id} className="hover:bg-[var(--surface-raised)]">
-                  <td className="px-6 py-4 font-mono text-sm">{record.fields.surveyNo || "-"}</td>
-                  <td className="px-6 py-4 font-mono text-sm">{record.fields.khataNo || "-"}</td>
-                  <td className="px-6 py-4 text-sm">{record.fields.ownerName || "-"}</td>
-                  <td className="px-6 py-4 text-sm">{record.fields.area || "-"}</td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      record.confidence_score >= 0.9 ? "bg-green-100 text-green-800" :
-                      record.confidence_score >= 0.7 ? "bg-yellow-100 text-yellow-800" :
-                      "bg-red-100 text-red-800"
-                    }`}>
-                      {(record.confidence_score * 100).toFixed(0)}%
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(record.validation_status)}`}>
-                      {record.validation_status.replace("_", " ").toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <Link
-                      href={`/records/${record.id}`}
-                      className="text-sm text-[var(--teal-600)] hover:underline"
-                    >
-                      View Details
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {filteredRecords.length === 0 && (
-            <div className="py-12 text-center">
-              <div className="text-4xl mb-3">📂</div>
-              <p className="text-[var(--gray-600)]">No records found for this filter</p>
-              <button
-                onClick={() => setFilter("all")}
-                className="mt-4 text-sm text-[var(--teal-600)] hover:underline"
-              >
-                Clear filter
-              </button>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-muted/60">
+                  <tr>
+                    {["Record", "Survey No", "Khata No", "Owner Name", "Area", "Confidence", "Validation", "Verification", "Actions"].map((h) => (
+                      <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-muted-foreground">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredRecords.map((record) => (
+                    <tr key={record.id} className="hover:bg-muted/40">
+                      <td className="px-5 py-4 font-mono text-sm">{record.record_code ?? record.id.slice(0, 8)}</td>
+                      <td className="px-5 py-4 font-mono text-sm">{record.survey_no || "-"}</td>
+                      <td className="px-5 py-4 font-mono text-sm">{record.khata_no || "-"}</td>
+                      <td className="px-5 py-4 text-sm">{record.owner_name || "-"}</td>
+                      <td className="px-5 py-4 text-sm">
+                        {record.area_detected != null ? `${record.area_detected} Ha` : "-"}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                            Number(record.confidence_score ?? 0) >= 0.9
+                              ? "bg-green-100 text-green-800"
+                              : Number(record.confidence_score ?? 0) >= 0.7
+                                ? "bg-yellow-100 text-yellow-800"
+                                : "bg-red-100 text-red-800"
+                          }`}
+                        >
+                          {(Number(record.confidence_score ?? 0) * 100).toFixed(0)}%
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${statusBadge[record.validation_status] ?? "bg-gray-100 text-gray-800"}`}
+                        >
+                          {record.validation_status.replace("_", " ").toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${verBadge[record.verification_status] ?? "bg-gray-100 text-gray-800"}`}
+                        >
+                          {record.verification_status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <Link
+                          href={`/records/${record.id}`}
+                          className="text-sm font-medium text-primary hover:underline"
+                        >
+                          View Details
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
-        </div>
-      </main>
+
+            {filteredRecords.length === 0 && (
+              <EmptyState
+                icon={Inbox}
+                title={records.length === 0 ? "No records yet" : "No records match this filter"}
+                description={
+                  records.length === 0
+                    ? "Records appear here after you upload and process a document."
+                    : "Try a different filter to see more records."
+                }
+                action={
+                  records.length === 0 ? (
+                    <Link href="/upload">
+                      <Button className="rounded-full">Upload a document</Button>
+                    </Link>
+                  ) : (
+                    <Button variant="outline" className="rounded-full" onClick={() => setFilter("all")}>
+                      Clear filter
+                    </Button>
+                  )
+                }
+              />
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

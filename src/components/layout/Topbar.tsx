@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown, LogOut, Menu, UserRound } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -16,6 +16,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { pageTitles } from "@/data/workflow";
 import { SidebarNav } from "@/components/layout/Sidebar";
 import { useCaseStore } from "@/store/case-store";
+import { getUserProfile, signOut, type Profile } from "@/lib/supabase";
 
 const LANGS = ["English", "मराठी", "हिंदी"];
 
@@ -27,8 +28,30 @@ export default function Topbar() {
   const { currentCase } = useCaseStore();
   const [lang, setLang] = useState("English");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
 
-  const initials = "RD";
+  useEffect(() => {
+    let mounted = true;
+    getUserProfile().then((p) => mounted && setProfile(p));
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const displayName = profile?.name || profile?.email?.split("@")[0] || "Officer";
+  const initials = displayName
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase() || "OF";
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push("/login");
+    router.refresh();
+  };
 
   return (
     <div className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border/70 bg-background/85 px-4 backdrop-blur-xl md:px-7">
@@ -57,7 +80,9 @@ export default function Topbar() {
       <div className="min-w-0">
         <h1 className="truncate text-[15px] font-semibold tracking-tight">{title}</h1>
         <p className="hidden truncate font-mono text-[11px] text-muted-foreground sm:block">
-          {currentCase.recId} · {currentCase.village}, {currentCase.district}
+          {currentCase
+            ? `${currentCase.recId} · ${currentCase.village}, ${currentCase.district}`
+            : "Land record digitization console"}
         </p>
       </div>
 
@@ -86,22 +111,25 @@ export default function Topbar() {
                   {initials}
                 </AvatarFallback>
               </Avatar>
-              <span className="hidden text-xs font-semibold lg:block">R. Deshmukh</span>
+              <span className="hidden max-w-[160px] truncate text-xs font-semibold lg:block">{displayName}</span>
               <ChevronDown className="hidden h-3.5 w-3.5 text-muted-foreground lg:block" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56 rounded-xl">
             <DropdownMenuLabel>
-              <div className="text-sm font-semibold">R. Deshmukh</div>
-              <div className="text-xs font-normal text-muted-foreground">Revenue Officer · Pune</div>
+              <div className="truncate text-sm font-semibold">{displayName}</div>
+              <div className="truncate text-xs font-normal text-muted-foreground">
+                {profile?.role ? `${profile.role.charAt(0).toUpperCase()}${profile.role.slice(1)}` : "Officer"}
+                {profile?.email ? ` · ${profile.email}` : ""}
+              </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="rounded-lg">
-              <UserRound className="h-4 w-4" /> View profile
+            <DropdownMenuItem className="rounded-lg" onClick={() => router.push("/audit")}>
+              <UserRound className="h-4 w-4" /> My activity
             </DropdownMenuItem>
             <DropdownMenuItem
               className="rounded-lg text-destructive focus:text-destructive"
-              onClick={() => router.push("/")}
+              onClick={handleSignOut}
             >
               <LogOut className="h-4 w-4" /> Sign out
             </DropdownMenuItem>
