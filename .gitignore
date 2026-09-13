@@ -47,3 +47,10 @@ next-env.d.ts
 __pycache__/
 .venv/
 /tmp/venv
+
+# python / backend runtime artifacts
+*.db
+*.sqlite3
+backend/landlens.db
+uploads/
+/tmp/landlens-uploads/

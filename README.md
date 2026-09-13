@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LANDLENS — Land Records Digitization Platform
 
-## Getting Started
+AI-powered digitization, validation and verification of India's legacy land
+records — from a faded 1962 register to a verified digital record, with a
+human in the loop wherever it matters.
 
-First, run the development server:
+| Layer    | Tech |
+|----------|------|
+| Frontend | Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Zustand |
+| Backend  | FastAPI · SQLAlchemy 2 (async) · SQLite (dev) / PostgreSQL (prod) |
+| AI       | Pluggable VLM extraction (Gemini / Sarvam / more) + Tesseract OCR |
+
+## Quickstart
+
+### 1. Backend (FastAPI)
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# SQLite is the default — zero setup. Optionally copy and edit env:
+cp ../.env.example ../.env
+
+uvicorn app.main:app --reload --port 8000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+On startup the API creates all tables and seeds three demo officer accounts:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Email | Password | Role |
+|-------|----------|------|
+| operator@landlens.local | operator123 | Digitization Operator |
+| verifier@landlens.local | verifier123 | Verification Officer |
+| admin@landlens.local | admin123 | Administrator |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Interactive API docs: http://localhost:8000/docs
 
-## Learn More
+### 2. Frontend (Next.js)
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm install
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Open http://localhost:3000 — sign in with a demo account above.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### How the pieces connect
 
-## Deploy on Vercel
+```
+Browser ──► Next.js (/api/* proxy routes, forwards Authorization header)
+              └──► FastAPI :8000 (/api/v1/auth, /records/upload, /jobs, ...)
+                     └──► SQLite/Postgres + in-memory job store + pipeline
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+`NEXT_PUBLIC_API_URL` lets the browser call FastAPI directly (CORS-configured)
+instead of going through the Next.js proxies. `BACKEND_URL` (server-side only)
+sets where the proxies forward to.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Pipeline
+
+Upload → preprocess (CLAHE/deskew) → layout detection → OCR (Tesseract +
+langdetect) → VLM field extraction → validation & trust score → human
+verification → audit trail. Every job reports status/progress via
+`GET /api/v1/jobs/{jobId}`.
+
+## Production notes
+
+- Set `DATABASE_URL` to PostgreSQL; run `alembic` migrations (backend/migrations).
+- Restrict `CORS_ORIGINS` to your deployed frontend origin.
+- Put both apps behind TLS; sessions expire after 1h (7d refresh token).
+- Uploads are size-capped (`MAX_UPLOAD_MB`, default 15MB) and type-checked.
+- Password hashing uses PBKDF2-HMAC-SHA256 (100k iterations) with per-user salt.

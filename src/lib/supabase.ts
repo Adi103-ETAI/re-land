@@ -1,71 +1,90 @@
-"""Supabase auth client for LANDLENS frontend."""
-import { createClient } from '@supabase/supabase-js'
+/**
+ * LANDLENS auth compatibility layer.
+ *
+ * The app previously used Supabase auth (with placeholder keys — never worked).
+ * Auth is now backed by the LANDLENS FastAPI backend (src/lib/auth.ts).
+ * This module keeps the OLD import surface (`@/lib/supabase`) working so all
+ * pages keep compiling while being connected to the real backend.
+ */
+import {
+  signIn as backendSignIn,
+  signUp as backendSignUp,
+  signOut as backendSignOut,
+  getSession as backendGetSession,
+  getUserProfile as backendGetUserProfile,
+  fetchMe,
+  subscribeToAuthChanges as backendSubscribe,
+  type Profile,
+  type UserRole,
+} from "@/lib/auth";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key'
+export type { Profile, UserRole };
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+// ── Auth helper functions (same signatures as before) ────────────────────────
 
-// Session types
-export type UserRole = 'operator' | 'verifier' | 'senior' | 'auditor' | 'admin'
+export const signIn = async (email: string, password: string) =>
+  backendSignIn(email, password);
 
-export interface Profile {
-  id: string
-  email: string
-  name: string
-  role: UserRole
-  created_at: string
-  updated_at: string
+export const signUp = async (email: string, password: string, name: string, role: UserRole) =>
+  backendSignUp(email, password, name, role);
+
+export const signOut = async () => backendSignOut();
+
+export const getSession = async () => backendGetSession();
+
+export const getUserProfile = async (userId: string): Promise<Profile | null> =>
+  backendGetUserProfile(userId);
+
+export const subscribeToAuthChanges = (callback: (user: any) => void) =>
+  backendSubscribe(callback);
+
+// ── Minimal supabase-like client shim ────────────────────────────────────────
+
+type Thenable<T> = { then: (onfulfilled: (value: T) => any) => any };
+
+interface ProfileQuery {
+  select: (_cols: string) => ProfileQuery;
+  eq: (_col: string, _val: any) => ProfileQuery;
+  single: () => Thenable<{ data: Profile | null; error: null }>;
+  insert: (values: Record<string, any>) => Thenable<{ data: null; error: { message: string } | null }>;
 }
 
-// Auth helpers
-export const signUp = async (email: string, password: string, name: string, role: UserRole) => {
-  const { data, error } = await supabase.auth.signUp({
-    email,
-    password
-  })
-  
-  if (error) throw error
-  
-  // Create profile
-  if (data.user) {
-    await supabase.from('profiles').insert({
-      id: data.user.id,
-      email,
-      name,
-      role
-    })
-  }
-  
-  return data
+function makeProfileQuery(): ProfileQuery {
+  const chain: ProfileQuery = {
+    select: () => chain,
+    eq: () => chain,
+    single: () =>
+      fetchMe().then((data) => ({ data, error: null as null })),
+    insert: () =>
+      Promise.resolve({ data: null, error: { message: "profiles are managed by the backend" } }),
+  };
+  return chain;
 }
 
-export const signIn = async (email: string, password: string) => {
-  return await supabase.auth.signInWithPassword({ email, password })
-}
-
-export const signOut = async () => {
-  return await supabase.auth.signOut()
-}
-
-export const getSession = async () => {
-  const { data: { session } } = await supabase.auth.getSession()
-  return session
-}
-
-export const getUserProfile = async (userId: string): Promise<Profile | null> => {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single()
-  
-  if (error) return null
-  return data as Profile
-}
-
-export const subscribeToAuthChanges = (callback: (user: any) => void) => {
-  return supabase.auth.onAuthStateChange((event, session) => {
-    callback(session?.user ?? null)
-  })
-}
+export const supabase = {
+  auth: {
+    getSession: async () => {
+      const session = await backendGetSession();
+      return { data: { session: session.user ? { user: session.user } : null }, error: null };
+    },
+    signInWithPassword: async (creds: { email: string; password: string }) =>
+      backendSignIn(creds.email, creds.password),
+    signOut: async () => {
+      await backendSignOut();
+      return { error: null };
+    },
+    onAuthStateChange: (callback: (event: string, session: { user: any } | null) => void) => {
+      backendGetSession().then((session) => {
+        callback("INITIAL_SESSION", session.user ? { user: session.user } : null);
+      });
+      const unsubscribe = backendSubscribe((user) => {
+        callback(user ? "SIGNED_IN" : "SIGNED_OUT", user ? { user } : null);
+      });
+      return { data: { subscription: { unsubscribe } } };
+    },
+  },
+  from: (table: string): ProfileQuery => {
+    if (table === "profiles") return makeProfileQuery();
+    throw new Error(`Table "${table}" is served by the backend API, not the client shim`);
+  },
+};

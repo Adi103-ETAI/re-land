@@ -32,11 +32,17 @@ class User(Base, BaseRecord):
     last_login = Column(DateTime(timezone=True), nullable=True)
     provider = Column(SAEnum(AuthProvider), default=AuthProvider.LOCAL)
     
-    # Relationships
-    verification_tasks_assigned = relationship("VerificationTask", back_populates="assigned_to")
-    verification_actions = relationship("VerificationAction", back_populates="actor")
-    audit_events = relationship("AuditEvent", back_populates="actor")
-    approvals_made = relationship("Approval", back_populates="decided_by")
+    # Relationships (explicit foreign_keys — several tables reference users.id)
+    verification_tasks_assigned = relationship(
+        "VerificationTask", foreign_keys="VerificationTask.assigned_to_id",
+        back_populates="assigned_to"
+    )
+    verification_actions = relationship(
+        "VerificationAction", foreign_keys="VerificationAction.actor_id",
+        back_populates="actor"
+    )
+    audit_events = relationship("AuditEvent", foreign_keys="AuditEvent.actor_id")
+    approvals_made = relationship("Approval", foreign_keys="Approval.decided_by_id")
 
 
 class Session(Base, BaseRecord):

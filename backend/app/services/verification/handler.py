@@ -11,7 +11,8 @@ from sqlalchemy.orm import selectinload
 from app.models.extraction import ExtractedRecord, RecordField, RecordStatus
 from app.models.record import LandRecord
 from app.models.verification import (
-    Approval, ApprovalDecision, VerificationTask, TaskStatus,
+    Approval, ApprovalDecision, VerificationTask,
+    VerificationStatus as TaskStatus,
 )
 from app.services.audit.logger import log_event
 from app.services.pipeline_db import get_session_factory

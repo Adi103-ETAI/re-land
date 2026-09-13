@@ -4,7 +4,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import type { Profile } from "@/lib/supabase";
 
-interface Record {
+interface CaseRecord {
   id: string;
   document_id: string;
   page_number: number;
@@ -15,8 +15,42 @@ interface Record {
   created_at: string;
 }
 
+// Demo rows shown when the backend has no records yet
+const DEMO_RECORDS: CaseRecord[] = [
+  {
+    id: "1",
+    document_id: "doc-001",
+    page_number: 1,
+    fields: { surveyNo: "45", khataNo: "234", ownerName: "Rajesh Kumar", area: "2.5 acres" },
+    confidence_score: 0.94,
+    validation_status: "safe",
+    verification_status: "pending",
+    created_at: "2026-09-12T08:30:00Z",
+  },
+  {
+    id: "2",
+    document_id: "doc-001",
+    page_number: 2,
+    fields: { surveyNo: "46", khataNo: "235", ownerName: "Sita Devi", area: "1.8 acres" },
+    confidence_score: 0.87,
+    validation_status: "review",
+    verification_status: "pending",
+    created_at: "2026-09-12T08:31:00Z",
+  },
+  {
+    id: "3",
+    document_id: "doc-002",
+    page_number: 1,
+    fields: { surveyNo: "47", khataNo: "236", ownerName: "Amit Sharma", area: "3.2 acres" },
+    confidence_score: 0.91,
+    validation_status: "safe",
+    verification_status: "accepted",
+    created_at: "2026-09-12T07:45:00Z",
+  },
+];
+
 export default function RecordsPage() {
-  const [records, setRecords] = useState<Record[]>([]);
+  const [records, setRecords] = useState<CaseRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -37,41 +71,30 @@ export default function RecordsPage() {
         .single();
       setProfile(profileData as Profile);
 
-      // Fetch records (mock for now, replace with real API call)
-      const mockRecords: Record[] = [
-        {
-          id: "1",
-          document_id: "doc-001",
-          page_number: 1,
-          fields: { surveyNo: "45", khataNo: "234", ownerName: "Rajesh Kumar", area: "2.5 acres" },
-          confidence_score: 0.94,
-          validation_status: "safe",
-          verification_status: "pending",
-          created_at: "2026-09-12T08:30:00Z",
-        },
-        {
-          id: "2",
-          document_id: "doc-001",
-          page_number: 2,
-          fields: { surveyNo: "46", khataNo: "235", ownerName: "Sita Devi", area: "1.8 acres" },
-          confidence_score: 0.87,
-          validation_status: "review",
-          verification_status: "pending",
-          created_at: "2026-09-12T08:31:00Z",
-        },
-        {
-          id: "3",
-          document_id: "doc-002",
-          page_number: 1,
-          fields: { surveyNo: "47", khataNo: "236", ownerName: "Amit Sharma", area: "3.2 acres" },
-          confidence_score: 0.91,
-          validation_status: "safe",
-          verification_status: "accepted",
-          created_at: "2026-09-12T07:45:00Z",
-        },
-      ];
-
-      setRecords(mockRecords);
+      // Fetch records from the backend API; fall back to demo rows
+      try {
+        const res = await fetch("/api/records", {
+          headers: { Authorization: `Bearer ${localStorage.getItem("landlens.access_token") ?? ""}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const apiRecords: CaseRecord[] = (data.records ?? []).map((r: any, i: number) => ({
+            id: String(r.recId ?? i),
+            document_id: String(r.documentId ?? "—"),
+            page_number: 1,
+            fields: Object.fromEntries((r.fields ?? []).map((f: any) => [f.key, f.value])),
+            confidence_score: r.extractionConfidence ?? 0.9,
+            validation_status: r.status === "completed" ? "safe" : "review",
+            verification_status: "pending",
+            created_at: r.validation?.runAt ?? new Date().toISOString(),
+          }));
+          setRecords(apiRecords.length > 0 ? apiRecords : DEMO_RECORDS);
+        } else {
+          setRecords(DEMO_RECORDS);
+        }
+      } catch {
+        setRecords(DEMO_RECORDS);
+      }
       setLoading(false);
     };
 
@@ -79,7 +102,7 @@ export default function RecordsPage() {
   }, []);
 
   const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
+    const styles: { [key: string]: string } = {
       safe: "bg-green-100 text-green-800",
       review: "bg-yellow-100 text-yellow-800",
       high_risk: "bg-red-100 text-red-800",

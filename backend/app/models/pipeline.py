@@ -1,5 +1,5 @@
 """Pipeline processing state models."""
-from sqlalchemy import Column, String, Integer, DateTime, Float, Boolean, ForeignKey, Enum as SAEnum, JSON
+from sqlalchemy import Column, String, Integer, DateTime, Float, Boolean, ForeignKey, Enum as SAEnum, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.models.base import Base, BaseRecord
 import enum
