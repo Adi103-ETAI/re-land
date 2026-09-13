@@ -1,20 +1,41 @@
 "use client";
-import { useState } from "react";
-import Link from "next/link";
-import { supabase } from "@/lib/supabase";
+import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { CloudUpload, FileText, Images, Map as MapIcon, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { useCaseStore } from "@/store/case-store";
+
+const STEPS = [
+  { title: "Document classification", desc: "AI identifies document type and language" },
+  { title: "OCR extraction", desc: "Text extraction using VLM + Tesseract fallback" },
+  { title: "Field recognition", desc: "Khasra number, owner name, area detected" },
+  { title: "Validation", desc: "Business rules applied, risk scoring" },
+  { title: "Review queue", desc: "Ready for officer verification" },
+];
+
+const ALLOWED = ["application/pdf", "image/jpeg", "image/png", "image/tiff"];
 
 export default function UploadPage() {
+  const router = useRouter();
+  const { setUploadedFile, setJobId } = useCaseStore();
   const [file, setFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
-  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-      setError("");
+  const acceptFile = (f: File | undefined | null) => {
+    if (!f) return;
+    if (!ALLOWED.includes(f.type)) {
+      setError("Invalid file type. Please upload PDF, JPEG, PNG, or TIFF.");
+      return;
     }
+    setError("");
+    setFile(f);
+    setPreviewUrl(f.type.startsWith("image/") ? URL.createObjectURL(f) : null);
   };
 
   const handleUpload = async () => {
@@ -22,184 +43,177 @@ export default function UploadPage() {
       setError("Please select a file first");
       return;
     }
-
-    // Validate file type
-    const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/tiff"];
-    if (!allowedTypes.includes(file.type)) {
-      setError("Invalid file type. Please upload PDF, JPEG, PNG, or TIFF.");
-      return;
-    }
-
     setUploading(true);
-    setProgress(0);
     setError("");
 
-    try {
-      // Get user session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        window.location.href = "/login";
-        return;
-      }
+    // Hold the file in the workflow store so processing/extraction can show it
+    setUploadedFile({
+      name: file.name,
+      sizeLabel: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+      url: file.type.startsWith("image/") ? URL.createObjectURL(file) : null,
+      isImage: file.type.startsWith("image/"),
+    });
 
-      // Create form data
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("user_id", session.user.id);
-
-      // Simulate upload progress
-      const interval = setInterval(() => {
-        setProgress(prev => Math.min(prev + 10, 90));
-      }, 200);
-
-      // Call upload API (replace with actual endpoint once backend is ready)
-      const response = await fetch("/api/v1/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      clearInterval(interval);
-      setProgress(100);
-
-      if (!response.ok) {
-        throw new Error("Upload failed");
-      }
-
-      const result = await response.json();
-      setUploadSuccess(true);
-      
-      // Redirect to processing or records page
-      setTimeout(() => {
-        window.location.href = `/processing/${result.job_id}`;
-      }, 1500);
-
-    } catch (err: any) {
-      setError(err.message || "Upload failed. Please try again.");
-    } finally {
-      setUploading(false);
-    }
+    // Fire the backend request without blocking navigation — if the FastAPI
+    // service is reachable we pick up its job id; otherwise processing falls
+    // back to the simulated pipeline automatically.
+    const formData = new FormData();
+    formData.append("file", file);
+    fetch("/api/upload", { method: "POST", body: formData, signal: AbortSignal.timeout(4000) })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((result) => {
+        const id = result?.jobId ?? result?.job_id;
+        if (id) {
+          setJobId(id);
+          try {
+            sessionStorage.setItem("landlens_jobId", id);
+          } catch {
+            /* private mode — store stays in memory */
+          }
+        }
+      })
+      .catch(() => setJobId(null));
+    router.push("/processing");
   };
 
   return (
-    <div className="min-h-screen bg-[var(--surface-page)]">
-      {/* Header */}
-      <header className="bg-white border-b border-[var(--border-hairline)] px-8 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center gap-2 font-extrabold text-lg text-[var(--ink-800)]">
-            <span className="w-2.5 h-2.5 rounded-[3px] bg-gradient-to-br from-[var(--saffron-600)] to-[var(--indigo-500)]" />
-            LANDLENS
-          </Link>
-          <nav className="flex gap-6 text-sm">
-            <Link href="/dashboard" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Dashboard</Link>
-            <Link href="/upload" className="font-medium text-[var(--ink-800)]">Upload</Link>
-            <Link href="/records" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Records</Link>
-            <Link href="/verification" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Verification</Link>
-          </nav>
-        </div>
-      </header>
+    <div className="mx-auto max-w-4xl">
+      <PageHeader
+        title="Upload document"
+        description="Upload land records for digitization and extraction."
+      />
 
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-8 py-12">
-        <div className="mb-8">
-          <h1 className="text-3xl font-[var(--font-serif)] text-[var(--ink-900)] mb-2">Upload Document</h1>
-          <p className="text-[var(--gray-600)]">Upload land records for digitization and extraction</p>
-        </div>
-
-        {/* Upload Area */}
-        <div className="card !p-8 mb-8">
-          <div className="border-2 border-dashed border-[var(--border-hairline)] rounded-xl p-12 text-center hover:border-[var(--teal-500)] transition-colors">
+      <Card className="mb-6 border-border/80">
+        <CardContent className="p-6 md:p-8">
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => inputRef.current?.click()}
+            onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              acceptFile(e.dataTransfer.files?.[0]);
+            }}
+            className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-10 text-center transition-all ${
+              dragging
+                ? "border-primary bg-accent/60"
+                : "border-border hover:border-primary/50 hover:bg-muted/50"
+            }`}
+          >
             <input
+              ref={inputRef}
               type="file"
-              id="file-upload"
               accept=".pdf,.jpg,.jpeg,.png,.tiff"
-              onChange={handleFileChange}
               className="hidden"
+              onChange={(e) => acceptFile(e.target.files?.[0])}
             />
-            <label htmlFor="file-upload" className="cursor-pointer">
-              <div className="text-5xl mb-4">📄</div>
-              <p className="text-lg font-medium text-[var(--ink-800)] mb-2">
-                {file ? file.name : "Drag & drop your file here"}
-              </p>
-              <p className="text-sm text-[var(--gray-600)]">
-                Supports PDF, JPEG, PNG, TIFF (Max 50MB)
-              </p>
-            </label>
+            <span className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-accent text-accent-foreground">
+              <CloudUpload className="h-6 w-6" />
+            </span>
+            <p className="text-base font-semibold">
+              {dragging ? "Drop it here" : file ? file.name : "Drag & drop your file here"}
+            </p>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              Supports PDF, JPEG, PNG, TIFF · Max 50MB
+            </p>
+            <Button type="button" variant="outline" className="mt-5 rounded-full" onClick={(e) => { e.stopPropagation(); inputRef.current?.click(); }}>
+              Browse files
+            </Button>
           </div>
 
           {file && (
-            <div className="mt-4 p-4 bg-[var(--peri-100)] rounded-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{file.type.includes("pdf") ? "📄" : "🖼️"}</span>
-                  <div>
-                    <p className="font-medium text-[var(--ink-800)]">{file.name}</p>
-                    <p className="text-sm text-[var(--gray-600)]">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                  </div>
+            <div className="mt-4 flex items-center justify-between rounded-2xl border border-border bg-muted/50 p-4">
+              <div className="flex min-w-0 items-center gap-3">
+                {previewUrl ? (
+                  <img src={previewUrl} alt="Selected file preview" className="h-12 w-12 rounded-xl object-cover" />
+                ) : (
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-accent text-accent-foreground">
+                    <FileText className="h-5 w-5" />
+                  </span>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{file.name}</p>
+                  <p className="text-xs text-muted-foreground">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                 </div>
-                <button
-                  onClick={() => setFile(null)}
-                  className="text-[var(--gray-500)] hover:text-[var(--ink-800)]"
-                >
-                  ✕
-                </button>
               </div>
+              <button
+                onClick={() => {
+                  setFile(null);
+                  setPreviewUrl(null);
+                }}
+                className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-label="Remove file"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           )}
 
           {error && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+            <div className="mt-4 rounded-xl border border-destructive/30 bg-[var(--destructive-soft)] px-4 py-3 text-sm text-destructive">
               {error}
             </div>
           )}
 
-          <button
+          <Button
             onClick={handleUpload}
             disabled={uploading || !file}
-            className="btn btn-teal w-full mt-6"
+            className="mt-6 h-12 w-full rounded-2xl text-[15px] shadow-md shadow-primary/20"
           >
-            {uploading ? `Uploading... ${progress}%` : "Start Extraction"}
-          </button>
-        </div>
+            {uploading ? "Uploading…" : "Start extraction"}
+          </Button>
+        </CardContent>
+      </Card>
 
-        {/* Supported Formats */}
-        <div className="grid md:grid-cols-3 gap-4">
-          {[
-            { icon: "📄", title: "PDF Documents", desc: "Revenue records, surveys, maps" },
-            { icon: "🗞️", title: "Handwritten Registers", desc: "Historical records, field notes" },
-            { icon: "🗺️", title: "Maps & Plans", desc: "Cadastral maps, survey plans" },
-          ].map(({ icon, title, desc }) => (
-            <div key={title} className="card !p-5 text-center">
-              <div className="text-3xl mb-3">{icon}</div>
-              <h3 className="font-semibold text-[var(--ink-900)] mb-1">{title}</h3>
-              <p className="text-sm text-[var(--gray-600)]">{desc}</p>
-            </div>
-          ))}
-        </div>
+      {/* Supported formats */}
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        {[
+          { icon: FileText, title: "PDF documents", desc: "Revenue records, surveys" },
+          { icon: Images, title: "Handwritten registers", desc: "Historical records, field notes" },
+          { icon: MapIcon, title: "Maps & plans", desc: "Cadastral maps, survey plans" },
+        ].map(({ icon: Icon, title, desc }) => (
+          <Card key={title} className="border-border/80">
+            <CardContent className="flex items-start gap-3.5 p-5">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent text-accent-foreground">
+                <Icon className="h-5 w-5" />
+              </span>
+              <div>
+                <h3 className="text-sm font-semibold">{title}</h3>
+                <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{desc}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-        {/* Process Info */}
-        <div className="mt-8 card !p-6">
-          <h2 className="font-semibold text-[var(--ink-900)] mb-4">What happens next?</h2>
-          <div className="space-y-3">
-            {[
-              { step: 1, title: "Document Classification", desc: "AI identifies document type and language" },
-              { step: 2, title: "OCR Extraction", desc: "Text extraction using tesseract + VLM" },
-              { step: 3, title: "Field Recognition", desc: "Khasra number, owner name, area detected" },
-              { step: 4, title: "Validation", desc: "Business rules applied, risk scoring" },
-              { step: 5, title: "Review Queue", desc: "Ready for officer verification" },
-            ].map(({ step, title, desc }) => (
-              <div key={step} className="flex items-start gap-4">
-                <div className="w-8 h-8 rounded-full bg-[var(--teal-600)] text-white flex items-center justify-center font-bold flex-shrink-0">
-                  {step}
-                </div>
-                <div>
-                  <p className="font-medium text-[var(--ink-800)]">{title}</p>
-                  <p className="text-sm text-[var(--gray-600)]">{desc}</p>
+      {/* What happens next */}
+      <Card className="border-border/80">
+        <CardContent className="p-6">
+          <h2 className="mb-5 font-semibold">What happens next?</h2>
+          <div className="space-y-0">
+            {STEPS.map(({ title, desc }, i) => (
+              <div key={title} className="relative flex gap-4 pb-5 last:pb-0">
+                {i < STEPS.length - 1 && (
+                  <span className="absolute left-[15px] top-9 h-[calc(100%-24px)] w-px bg-border" />
+                )}
+                <span className="z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                  {i + 1}
+                </span>
+                <div className="pt-1">
+                  <p className="text-sm font-semibold">{title}</p>
+                  <p className="mt-0.5 text-sm text-muted-foreground">{desc}</p>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      </main>
+        </CardContent>
+      </Card>
     </div>
   );
 }

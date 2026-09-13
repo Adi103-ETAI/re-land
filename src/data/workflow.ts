@@ -1,13 +1,13 @@
-import type { WFStage } from "@/lib/types";
+import { FileText, Upload, Languages, BrainCircuit, FileCheck2, UserCheck, Database } from "lucide-react";
 
-export const WF_STAGES: WFStage[] = [
-  { ic: "📄", label: "Old Document" },
-  { ic: "⭱", label: "Upload" },
-  { ic: "🔤", label: "OCR Processing" },
-  { ic: "🧠", label: "AI Extraction" },
-  { ic: "✓", label: "Validation" },
-  { ic: "👤", label: "Human Verification" },
-  { ic: "🗂", label: "Verified Digital Record" },
+export const WF_STAGES = [
+  { icon: FileText, label: "Old Document" },
+  { icon: Upload, label: "Upload" },
+  { icon: Languages, label: "OCR Processing" },
+  { icon: BrainCircuit, label: "AI Extraction" },
+  { icon: FileCheck2, label: "Validation" },
+  { icon: UserCheck, label: "Human Verification" },
+  { icon: Database, label: "Verified Digital Record" },
 ];
 
 export const pageTitles: Record<string, string> = {

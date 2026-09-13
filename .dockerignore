@@ -1,0 +1,23 @@
+# Keep the build context lean
+node_modules/
+.next/
+out/
+build/
+.git/
+.env
+.env*.local
+*.md
+!README.md
+files*/
+docs/
+backend/.venv/
+backend/venv/
+backend/data/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/uvicorn.log
+backend/*.log
+*.db
+.DS_Store
+*.pem
+Zone.Identifier

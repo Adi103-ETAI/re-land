@@ -11,7 +11,38 @@ from app.models.auth import UserRole
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+ACCESS_TTL_HOURS = 1
+REFRESH_TTL_DAYS = 30
+
+
+def _validate_email(v: str) -> str:
+    """Pragmatic syntax check for login emails.
+
+    Full RFC validation (email-validator) is intentionally not used: it
+    unconditionally rejects special-use domains such as `.local`, which the
+    seeded demo officers use. Address validity is not a security control for
+    password auth — regex syntax + length bounds are sufficient here.
+    """
+    import re
+
+    v = v.strip().lower()
+    pattern = r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$"
+    if not re.fullmatch(pattern, v) or len(v) > 254:
+        raise ValueError("not a valid email address")
+    return v
+
+
+Email = Annotated[str, AfterValidator(_validate_email)]
+
+async def get_db() -> AsyncSession:
+    """FastAPI dependency yielding an async session from the shared factory."""
+    async with SessionFactory() as session:
+        yield session
+
+
+# ── Request / response schemas ──────────────────────────────────────────
 
 
 def _validate_email(v: str) -> str:
@@ -43,9 +74,9 @@ class LoginRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
-    token_type: str
+    token_type: str = "bearer"
     expires_in: int
-    user: dict
+    user: "UserResponse"
 
 
 class UserResponse(BaseModel):
@@ -53,7 +84,10 @@ class UserResponse(BaseModel):
     email: str
     name: str
     role: str
-    org_scope: Optional[dict] = None
+
+    @classmethod
+    def from_user(cls, user: User) -> "UserResponse":
+        return cls(id=user.id, email=user.email, name=user.username, role=user.role.value)
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -72,7 +106,8 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
             org_scope=user.org_scope,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e))
+    return UserResponse.from_user(user)
 
 
 @router.post("/login", response_model=TokenResponse)

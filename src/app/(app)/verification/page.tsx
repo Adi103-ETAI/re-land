@@ -1,8 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { supabase } from "@/lib/supabase";
-import type { Profile } from "@/lib/supabase";
+import { Check, Lightbulb, TriangleAlert, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { getSession, getUserProfile, type Profile } from "@/lib/supabase";
 
 interface VerificationItem {
   id: string;
@@ -19,25 +25,20 @@ export default function VerificationPage() {
   const [loading, setLoading] = useState(true);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [note, setNote] = useState("");
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [, setProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
-    const fetchVerification = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
+    let mounted = true;
+    (async () => {
+      const session = await getSession();
+      if (!session?.user) {
         window.location.href = "/login";
         return;
       }
+      const p = await getUserProfile(session.user.email);
+      if (!mounted) return;
+      setProfile(p);
 
-      // Fetch profile
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", session.user.id)
-        .single();
-      setProfile(profileData as Profile);
-
-      // Mock verification queue (replace with real API)
       const mockItems: VerificationItem[] = [
         {
           id: "v1",
@@ -67,233 +68,189 @@ export default function VerificationPage() {
           created_at: "2026-09-12T08:40:00Z",
         },
       ];
-
       setItems(mockItems);
       setCurrentId(mockItems[0]?.id || null);
       setLoading(false);
+    })();
+    return () => {
+      mounted = false;
     };
-
-    fetchVerification();
   }, []);
 
-  const currentItem = items.find(i => i.id === currentId);
+  const currentItem = items.find((i) => i.id === currentId);
+  const pendingCount = items.filter((i) => i.verification_status === "pending").length;
 
-  const handleAccept = async () => {
+  const resolve = (status: "accepted" | "rejected") => {
     if (!currentItem) return;
-    
-    // Update in Supabase (mock for now)
-    setItems(prev => prev.map(item =>
-      item.id === currentId ? { ...item, verification_status: "accepted" } : item
-    ));
-    
-    // Move to next
-    const currentIndex = items.findIndex(i => i.id === currentId);
-    if (currentIndex < items.length - 1) {
-      setCurrentId(items[currentIndex + 1].id);
-    }
-    setNote("");
-  };
-
-  const handleReject = async () => {
-    if (!currentItem) return;
-    
-    setItems(prev => prev.map(item =>
-      item.id === currentId ? { ...item, verification_status: "rejected" } : item
-    ));
-    
-    const currentIndex = items.findIndex(i => i.id === currentId);
-    if (currentIndex < items.length - 1) {
-      setCurrentId(items[currentIndex + 1].id);
-    }
+    setItems((prev) =>
+      prev.map((item) => (item.id === currentId ? { ...item, verification_status: status } : item))
+    );
+    const idx = items.findIndex((i) => i.id === currentId);
+    if (idx < items.length - 1) setCurrentId(items[idx + 1].id);
     setNote("");
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--surface-page)]">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-[var(--teal-600)] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-[var(--gray-600)]">Loading verification queue...</p>
+      <div className="space-y-6">
+        <Skeleton className="h-9 w-72" />
+        <div className="grid gap-6 lg:grid-cols-3">
+          <Skeleton className="h-80 rounded-2xl" />
+          <Skeleton className="h-80 rounded-2xl lg:col-span-2" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[var(--surface-page)]">
-      {/* Header */}
-      <header className="bg-white border-b border-[var(--border-hairline)] px-8 py-4">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center gap-2 font-extrabold text-lg text-[var(--ink-800)]">
-            <span className="w-2.5 h-2.5 rounded-[3px] bg-gradient-to-br from-[var(--saffron-600)] to-[var(--indigo-500)]" />
-            LANDLENS
-          </Link>
-          <nav className="flex gap-6 text-sm">
-            <Link href="/dashboard" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Dashboard</Link>
-            <Link href="/upload" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Upload</Link>
-            <Link href="/records" className="text-[var(--gray-600)] hover:text-[var(--ink-800)]">Records</Link>
-            <Link href="/verification" className="font-medium text-[var(--ink-800)]">Verification</Link>
-          </nav>
-        </div>
-      </header>
+    <div>
+      <PageHeader
+        title="Verification queue"
+        description={`${pendingCount} pending item${pendingCount === 1 ? "" : "s"} — exceptions the AI is not confident about.`}
+      />
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-8 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-[var(--font-serif)] text-[var(--ink-900)] mb-1">Verification Queue</h1>
-            <p className="text-[var(--gray-600)]">
-              {items.filter(i => i.verification_status === "pending").length} pending items
-            </p>
-          </div>
-        </div>
+      <div className="grid gap-5 lg:grid-cols-3">
+        {/* Queue list */}
+        <Card className="h-fit border-border/80">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold">
+              Queue <span className="font-mono text-muted-foreground">({pendingCount})</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="max-h-[480px] space-y-2 overflow-y-auto">
+            {items.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setCurrentId(item.id)}
+                className={`w-full rounded-2xl border p-3.5 text-left transition-all ${
+                  currentId === item.id
+                    ? "border-primary/50 bg-accent shadow-sm"
+                    : "border-transparent hover:bg-muted/70"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold">Survey № {item.fields.surveyNo}</span>
+                  {item.verification_status !== "pending" && (
+                    <Badge
+                      className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                        item.verification_status === "accepted"
+                          ? "bg-[var(--success-soft)] text-[var(--success)] hover:bg-[var(--success-soft)]"
+                          : "bg-[var(--destructive-soft)] text-destructive hover:bg-[var(--destructive-soft)]"
+                      }`}
+                    >
+                      {item.verification_status}
+                    </Badge>
+                  )}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Khata {item.fields.khataNo} · confidence {(item.confidence_score * 100).toFixed(0)}%
+                </div>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
 
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Left Panel - Queue List */}
-          <div className="lg:col-span-1">
-            <div className="card !p-4">
-              <h3 className="font-semibold text-[var(--ink-800)] mb-4">Queue ({items.filter(i => i.verification_status === "pending").length})</h3>
-              <div className="space-y-2">
-                {items.map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => setCurrentId(item.id)}
-                    className={`w-full text-left p-3 rounded-lg transition-colors ${
-                      currentId === item.id
-                        ? "bg-[var(--teal-50)] border border-[var(--teal-200)]"
-                        : "hover:bg-[var(--surface-raised)]"
+        {/* Detail */}
+        {currentItem && (
+          <div className="space-y-5 lg:col-span-2">
+            <Card className="border-border/80">
+              <CardContent className="p-6">
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-lg font-semibold tracking-tight">Record #{currentItem.record_id}</h2>
+                  <Badge
+                    className={`rounded-md text-[10px] font-extrabold tracking-wide ${
+                      currentItem.validation_status === "high_risk"
+                        ? "bg-[var(--destructive-soft)] text-destructive hover:bg-[var(--destructive-soft)]"
+                        : currentItem.validation_status === "review"
+                          ? "bg-[var(--warning-soft)] text-warning hover:bg-[var(--warning-soft)]"
+                          : "bg-[var(--success-soft)] text-[var(--success)] hover:bg-[var(--success-soft)]"
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-[var(--ink-800)] text-sm">
-                        Survey No: {item.fields.surveyNo}
-                      </span>
-                      {item.verification_status !== "pending" && (
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          item.verification_status === "accepted" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                        }`}>
-                          {item.verification_status}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-[var(--gray-600)] mt-1">
-                      Khata: {item.fields.khataNo} • Confidence: {(item.confidence_score * 100).toFixed(0)}%
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Panel - Current Item */}
-          {currentItem && (
-            <div className="lg:col-span-2 space-y-6">
-              {/* Record Details */}
-              <div className="card !p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-[var(--ink-800)]">
-                    Record #{currentItem.record_id}
-                  </h2>
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                    currentItem.validation_status === "high_risk" ? "bg-red-100 text-red-800" :
-                    currentItem.validation_status === "review" ? "bg-yellow-100 text-yellow-800" :
-                    "bg-green-100 text-green-800"
-                  }`}>
                     {currentItem.validation_status.toUpperCase()}
-                  </span>
+                  </Badge>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
                   {[
                     { label: "Survey Number", value: currentItem.fields.surveyNo },
                     { label: "Khata Number", value: currentItem.fields.khataNo },
                     { label: "Owner Name", value: currentItem.fields.ownerName },
                     { label: "Area", value: currentItem.fields.area },
                   ].map(({ label, value }) => (
-                    <div key={label} className="p-4 bg-[var(--surface-raised)] rounded-lg">
-                      <div className="text-xs text-[var(--gray-600)] mb-1">{label}</div>
-                      <div className="font-medium text-[var(--ink-800)]">{value || "-"}</div>
+                    <div key={label} className="rounded-2xl bg-muted/70 p-4">
+                      <div className="mb-1 text-[11px] font-medium text-muted-foreground">{label}</div>
+                      <div className="truncate font-mono text-sm font-bold">{value || "—"}</div>
                     </div>
                   ))}
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-[var(--surface-raised)] rounded-lg">
+                <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-muted/70 p-4">
                   <div>
-                    <div className="text-xs text-[var(--gray-600)]">Confidence Score</div>
-                    <div className="text-2xl font-bold text-[var(--ink-800)]">
+                    <div className="text-xs text-muted-foreground">Confidence score</div>
+                    <div className="font-mono text-2xl font-bold">
                       {(currentItem.confidence_score * 100).toFixed(1)}%
                     </div>
                   </div>
-                  <div className="w-32 h-2 bg-[var(--gray-200)] rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-[var(--teal-600)] rounded-full"
-                      style={{ width: `${currentItem.confidence_score * 100}%` }}
-                    ></div>
+                  <Progress value={currentItem.confidence_score * 100} className="h-2 w-40" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/80">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Verification actions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <label className="mb-2 block text-sm font-medium text-muted-foreground">
+                  Notes <span className="font-normal">(optional)</span>
+                </label>
+                <Textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  rows={3}
+                  className="mb-4 resize-none rounded-2xl"
+                  placeholder="Add verification notes…"
+                />
+                <div className="flex flex-wrap gap-3">
+                  <Button className="flex-1 rounded-full" onClick={() => resolve("accepted")}>
+                    <Check className="h-4 w-4" /> Accept record
+                  </Button>
+                  <Button variant="destructive" className="flex-1 rounded-full" onClick={() => resolve("rejected")}>
+                    <X className="h-4 w-4" /> Reject & flag
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-border/80">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">AI recommendations</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-start gap-3 rounded-2xl border border-warning/25 bg-[var(--warning-soft)] p-4">
+                  <TriangleAlert className="mt-0.5 h-4.5 w-4.5 shrink-0 text-warning" />
+                  <div>
+                    <p className="text-sm font-semibold text-warning">Low confidence alert</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-warning/80">
+                      Confidence score ({(currentItem.confidence_score * 100).toFixed(0)}%) is below threshold.
+                      Manual verification recommended.
+                    </p>
                   </div>
                 </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="card !p-6">
-                <h3 className="font-semibold text-[var(--ink-800)] mb-4">Verification Actions</h3>
-                
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-[var(--ink-700)] mb-2">
-                    Notes (optional)
-                  </label>
-                  <textarea
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    rows={3}
-                    className="input w-full resize-none"
-                    placeholder="Add verification notes..."
-                  />
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleAccept}
-                    className="btn btn-teal flex-1"
-                  >
-                    ✓ Accept Record
-                  </button>
-                  <button
-                    onClick={handleReject}
-                    className="btn btn-danger flex-1"
-                  >
-                    ✕ Reject & Flag
-                  </button>
-                </div>
-              </div>
-
-              {/* AI Recommendations */}
-              <div className="card !p-6">
-                <h3 className="font-semibold text-[var(--ink-800)] mb-4">AI Recommendations</h3>
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <span className="text-lg">⚠️</span>
-                    <div>
-                      <p className="text-sm font-medium text-yellow-800">Low Confidence Alert</p>
-                      <p className="text-xs text-yellow-700 mt-1">
-                        Confidence score ({(currentItem.confidence_score * 100).toFixed(0)}%) is below threshold. Manual verification recommended.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <span className="text-lg">💡</span>
-                    <div>
-                      <p className="text-sm font-medium text-blue-800">Format Issue Detected</p>
-                      <p className="text-xs text-blue-700 mt-1">
-                        Owner name format may not match standard pattern. Please verify.
-                      </p>
-                    </div>
+                <div className="flex items-start gap-3 rounded-2xl border border-primary/20 bg-accent p-4">
+                  <Lightbulb className="mt-0.5 h-4.5 w-4.5 shrink-0 text-accent-foreground" />
+                  <div>
+                    <p className="text-sm font-semibold text-accent-foreground">Format issue detected</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-accent-foreground/80">
+                      Owner name format may not match the standard pattern. Please verify.
+                    </p>
                   </div>
                 </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

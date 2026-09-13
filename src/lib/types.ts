@@ -1,3 +1,5 @@
+import type { ComponentType } from "react";
+
 export type CaseRecord = {
   recId: string;
   owner: string;
@@ -23,7 +25,7 @@ export type UploadedFile = {
   isImage: boolean;
 };
 
-export type WFStage = { ic: string; label: string };
+export type WFStage = { icon: ComponentType<{ className?: string }>; label: string };
 
 export type Parcel = {
   lat: number;

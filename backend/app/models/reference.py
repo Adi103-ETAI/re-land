@@ -22,7 +22,7 @@ class ModelStatus(str, enum.Enum):
     TESTING = "testing"
     ARCHIVED = "archived"
 
-class ReferenceDataSource(Base, BaseRecord):
+class ReferenceDataSource(BaseRecord):
     """External/master dataset used for validation."""
     __tablename__ = "reference_data_sources"
     
@@ -34,7 +34,7 @@ class ReferenceDataSource(Base, BaseRecord):
     
     gis_references = relationship("GISReference", back_populates="source_dataset")
 
-class ModelVersion(Base, BaseRecord):
+class ModelVersion(BaseRecord):
     """Versioned AI/ML model or prompt/config used at some pipeline stage."""
     __tablename__ = "model_versions"
     
@@ -49,7 +49,7 @@ class ModelVersion(Base, BaseRecord):
     ocr_results = relationship("OCRResult", back_populates="model")
     processing_attempts = relationship("ProcessingAttempt", back_populates="model")
 
-class EvaluationDataset(Base, BaseRecord):
+class EvaluationDataset(BaseRecord):
     """Curated ground-truth dataset for measuring accuracy."""
     __tablename__ = "evaluation_datasets"
     
@@ -60,7 +60,7 @@ class EvaluationDataset(Base, BaseRecord):
     
     training_feedbacks = relationship("TrainingFeedback", back_populates="dataset")
 
-class TrainingFeedback(Base, BaseRecord):
+class TrainingFeedback(BaseRecord):
     """Human correction retained as feedback data for future evaluation."""
     __tablename__ = "training_feedbacks"
     

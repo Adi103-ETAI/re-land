@@ -71,6 +71,24 @@ class OCREngine:
             # already have called preprocess_page; we just load here.
             image = Image.open(image_path)
 
+            # Intersect the requested language chain with installed traineddata —
+            # tesseract aborts entirely when a requested language file is missing.
+            try:
+                available = set(pytesseract.get_languages(config=""))
+            except Exception:
+                available = set()
+            if available:
+                requested = [p.strip() for p in lang.split("+") if p.strip()]
+                usable = [p for p in requested if p in available]
+                if not usable:
+                    usable = ["eng"] if "eng" in available else []
+                if usable != requested:
+                    logger.warning(
+                        "Requested OCR langs %s but only %s installed — using %s",
+                        requested, sorted(available), usable,
+                    )
+                lang = "+".join(usable)
+
             config = f"--oem {TESSERACT_OEM} --psm {TESSERACT_PSM_TABLE}"
             data = pytesseract.image_to_data(
                 image, lang=lang, config=config, output_type=pytesseract.Output.DICT
