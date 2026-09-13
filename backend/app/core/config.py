@@ -36,12 +36,14 @@ S3_BUCKET = os.getenv("S3_BUCKET", "landlens-raw")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # CORS: comma-separated list of allowed browser origins
-CORS_ORIGINS = [
-    o.strip() for o in os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000",
-    ).split(",") if o.strip()
-]
+# Default "*" lets Render/Vercel previews work without extra config; tighten in production.
+_raw_cors = os.getenv("CORS_ORIGINS", "")
+if _raw_cors.strip() == "" or _raw_cors.strip() == "*":
+    CORS_ORIGINS = ["*"]
+else:
+    CORS_ORIGINS = [o.strip() for o in _raw_cors.split(",") if o.strip()]
+    if not CORS_ORIGINS:
+        CORS_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
 # Careful extraction thresholds — never auto-approve below these
 CONF_THRESHOLD = float(os.getenv("CONF_THRESHOLD", "0.90"))

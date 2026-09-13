@@ -9,6 +9,7 @@
   --color-muted-foreground: var(--gray-600);
   --color-border: var(--border-hairline);
   --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
   --color-primary: var(--saffron-600);
   --color-primary-foreground: #ffffff;
   --color-saffron-500: var(--saffron-500);
@@ -16,6 +17,15 @@
   --color-violet-400: #A78BFA;
   --color-ring: var(--indigo-500);
   --color-input: var(--border-hairline);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: #ffffff;
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
 }
 
 /* ── Glassmorphism animation system (sign-in) ── */

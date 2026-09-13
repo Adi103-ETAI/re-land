@@ -97,6 +97,23 @@ export async function signUp(email: string, password: string, name: string, role
   return { data: { user: data.user, needsConfirmation: !data.session }, error: null };
 }
 
+export async function signInWithGoogle() {
+  const sb = getSupabase();
+  if (!sb) return { data: null, error: { message: "Supabase is not configured — add your keys to .env.local" } };
+  const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined;
+  const { data, error } = await sb.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo },
+  });
+  if (error) return { data: null, error: { message: error.message } };
+  // Supabase returns { provider, url } and redirects the browser to the URL.
+  // The actual session is available after redirect via detectSessionInUrl.
+  if (data?.url && typeof window !== "undefined") {
+    window.location.href = data.url;
+  }
+  return { data, error: null };
+}
+
 export async function signOut(): Promise<void> {
   const sb = getSupabase();
   if (sb) await sb.auth.signOut();

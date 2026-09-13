@@ -261,7 +261,7 @@ export default function VerificationPage() {
                     </Button>
                     <Button
                       variant="destructive"
-                      className="h-11 rounded-full text-[15px] text-white shadow-md shadow-destructive/25"
+                      className="h-11 rounded-full bg-[#c64228] text-[15px] font-semibold text-white shadow-md shadow-destructive/25 hover:bg-[#a73620] dark:bg-[#c64228] dark:hover:bg-[#a73620]"
                       disabled={busy}
                       onClick={() => resolve("rejected")}
                     >

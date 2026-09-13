@@ -28,9 +28,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# On Render/Vercel, allow the deployed frontend origin in addition to localhost.
+# Set CORS_ORIGINS env to e.g. https://your-app.vercel.app,https://*.vercel.app,http://localhost:3000
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=CORS_ORIGINS if CORS_ORIGINS != ["*"] else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

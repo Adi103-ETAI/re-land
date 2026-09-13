@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { SignInPage, type Testimonial } from "@/components/ui/sign-in";
-import { signIn } from "@/lib/auth";
+import { signIn, signInWithGoogle } from "@/lib/auth";
 
 const TESTIMONIALS: Testimonial[] = [
   {
@@ -48,6 +48,19 @@ export default function LoginPage() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const { error: err } = await signInWithGoogle();
+      if (err) throw err;
+      // Redirect handled by Supabase (window.location.href = data.url)
+    } catch (e: any) {
+      setError(e?.message || "Google sign-in failed.");
+      setLoading(false);
+    }
+  };
+
   return (
     <SignInPage
       title="Officer Sign In"
@@ -55,9 +68,7 @@ export default function LoginPage() {
       heroImageSrc="https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1600&q=80"
       testimonials={TESTIMONIALS}
       onSignIn={handleSignIn}
-      onGoogleSignIn={() =>
-        setError("Google SSO is not enabled for this deployment — use your officer credentials.")
-      }
+      onGoogleSignIn={handleGoogleSignIn}
       onResetPassword={() =>
         setError("Password resets are handled by your district administrator.")
       }

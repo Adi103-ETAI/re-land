@@ -8,6 +8,7 @@
 export {
   signIn,
   signUp,
+  signInWithGoogle,
   signOut,
   getSession,
   getUserProfile,

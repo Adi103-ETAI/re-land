@@ -2,8 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // Self-contained server bundle for Docker / bare-metal deploys (node .next/standalone/server.js)
-  output: "standalone",
+  // Vercel handles its own output; keep standalone only for Docker/Render.
+  // Vercel ignores `output: standalone` but we keep it for `npm run build` portability.
+  ...(process.env.VERCEL ? {} : { output: "standalone" as const }),
   poweredByHeader: false,
   compress: true,
   async headers() {
