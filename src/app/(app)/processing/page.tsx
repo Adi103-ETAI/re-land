@@ -83,7 +83,7 @@ export default function Processing() {
           });
           setFields(rec.fields ?? []);
 
-          // Persist the extraction result to Supabase (once)
+          // Persist the extraction result (once)
           if (!savedRef.current) {
             savedRef.current = true;
             try {
@@ -122,7 +122,7 @@ export default function Processing() {
                 newValues: { survey_no: rec.survey, owner: rec.owner },
               });
             } catch (e: any) {
-              if (!cancelled) setError(`Extraction succeeded but saving to Supabase failed: ${e?.message || e}`);
+              if (!cancelled) setError(`Extraction succeeded but saving failed: ${e?.message || e}`);
             }
           }
 
@@ -186,7 +186,7 @@ export default function Processing() {
                   <span className="font-semibold">{error}</span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Nothing was saved as an extracted record — your original document remains stored in Supabase.
+                  Nothing was saved as an extracted record — your original document is safe and untouched.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <Button className="rounded-full" onClick={() => router.push("/upload")}>
@@ -232,7 +232,7 @@ export default function Processing() {
                   ))}
                 </ul>
                 <p className="mt-4 text-[11px] text-muted-foreground">
-                  The extracted record is saved to Supabase automatically when processing completes.
+                  The extracted record is saved automatically when processing completes.
                 </p>
               </>
             )}

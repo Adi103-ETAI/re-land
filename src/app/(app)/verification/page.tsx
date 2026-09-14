@@ -75,8 +75,8 @@ export default function VerificationPage() {
       toast({
         description:
           status === "accepted"
-            ? `Record ${currentItem.record_code ?? ""} accepted — saved to Supabase`
-            : `Record ${currentItem.record_code ?? ""} rejected and flagged — saved to Supabase`,
+            ? `Record ${currentItem.record_code ?? ""} accepted`
+            : `Record ${currentItem.record_code ?? ""} rejected and flagged`,
       });
       setItems((prev) => prev.filter((i) => i.id !== currentItem.id));
       setCurrentId((prev) => {
@@ -115,7 +115,7 @@ export default function VerificationPage() {
     <div>
       <PageHeader
         title="Verification queue"
-        description={`${pendingCount} pending item${pendingCount === 1 ? "" : "s"} — every decision is stored in Supabase with your name on it.`}
+        description={`${pendingCount} pending item${pendingCount === 1 ? "" : "s"} — every decision is recorded with your name on it.`}
       />
 
       {error && (

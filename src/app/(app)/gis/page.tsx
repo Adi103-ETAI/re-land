@@ -122,7 +122,7 @@ export default function GisPage() {
     }
   }, [configured]);
 
-  // Load parcels from Supabase
+  // Load parcels
   useEffect(() => {
     if (configured) loadParcels();
   }, [configured, loadParcels]);
@@ -186,7 +186,7 @@ export default function GisPage() {
       setParcels((prev) => [created, ...prev]);
       setSelected(created);
       setPendingPin(null);
-      toast({ description: "Parcel saved to Supabase" });
+      toast({ description: "Parcel pin saved" });
     } catch (e: any) {
       toast({ description: e?.message || "Could not save the parcel" });
     } finally {
@@ -207,7 +207,7 @@ export default function GisPage() {
     <div>
       <PageHeader
         title="GIS / land map"
-        description="Live OpenStreetMap — parcels are loaded from and saved to Supabase. Click anywhere on the map to register a parcel pin."
+        description="Live map — click anywhere to register a parcel pin."
       />
       <Tracker activeIdx={6} />
 
@@ -270,7 +270,7 @@ export default function GisPage() {
             aria-label="Cadastral map"
           />
           <p className="text-xs text-muted-foreground">
-            Map data © OpenStreetMap contributors · place search by Nominatim
+            Map data © OpenStreetMap contributors
           </p>
         </div>
 
@@ -302,7 +302,7 @@ export default function GisPage() {
                 </select>
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <Button className="rounded-full" onClick={savePendingParcel} disabled={savingPin}>
-                    {savingPin ? "Saving…" : "Save to Supabase"}
+                    {savingPin ? "Saving…" : "Save pin"}
                   </Button>
                   <Button variant="outline" className="rounded-full" onClick={() => setPendingPin(null)}>
                     Cancel

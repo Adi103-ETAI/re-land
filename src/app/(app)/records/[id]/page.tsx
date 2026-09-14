@@ -140,8 +140,8 @@ export default function RecordDetailPage() {
       toast({
         description:
           action === "accepted"
-            ? "Record accepted — decision stored in Supabase"
-            : "Record rejected and flagged — decision stored in Supabase",
+            ? "Record accepted"
+            : "Record rejected and flagged",
       });
       await load();
       setNote("");

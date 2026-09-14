@@ -70,7 +70,7 @@ export default function RecordsPage() {
     <div>
       <PageHeader
         title="Extracted records"
-        description="View and manage digitized land records — all stored in Supabase."
+        description="View and manage digitized land records."
         actions={
           <Link href="/upload">
             <Button className="rounded-full">Upload New Document</Button>

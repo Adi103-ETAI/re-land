@@ -77,7 +77,7 @@ export default function LoginPage() {
       error={error}
       footerNote={
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Accounts are managed through Supabase Auth. New officers can{" "}
+          Officer accounts are managed centrally. New officers can{" "}
           <button
             type="button"
             className="font-semibold text-primary underline-offset-2 hover:underline"

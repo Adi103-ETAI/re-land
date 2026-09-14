@@ -3,38 +3,30 @@ import { KeyRound } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
- * Shown instead of a page's content when Supabase credentials have not
- * been filled in yet (.env.local). Replaces all former demo/mock data.
+ * Shown instead of a page's content when the backend connection has not
+ * been configured yet (.env.local). Replaces all former demo/mock data.
  */
 export function SetupNotice({ what }: { what?: string }) {
   return (
     <Card className="border-border/80">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-base">
-          <KeyRound className="h-4 w-4 text-primary" /> Connect Supabase to continue
+          <KeyRound className="h-4 w-4 text-primary" /> Setup required to continue
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm text-muted-foreground">
         <p>
           {what
-            ? `${what} is stored in Supabase, but no credentials are configured yet — so there is nothing to show.`
-            : "This data is stored in Supabase, but no credentials are configured yet — so there is nothing to show."}
+            ? `${what} is stored securely, but the connection is not configured yet — so there is nothing to show.`
+            : "This data is stored securely, but the connection is not configured yet — so there is nothing to show."}
         </p>
         <ol className="list-decimal space-y-1.5 pl-5 leading-relaxed">
+          <li>Ask your administrator for the project connection details</li>
           <li>
-            Create a project at <span className="font-mono text-foreground">supabase.com</span>
+            Add them to <span className="font-mono text-foreground">.env.local</span> (see{" "}
+            <span className="font-mono text-foreground">.env.example</span>)
           </li>
-          <li>
-            Run the SQL from <span className="font-mono text-foreground">supabase/schema.sql</span> in the
-            project&apos;s SQL Editor (or the <span className="font-mono text-foreground">supabase/migrations/</span>{" "}
-            files in order)
-          </li>
-          <li>
-            Copy <span className="font-mono text-foreground">NEXT_PUBLIC_SUPABASE_URL</span> and{" "}
-            <span className="font-mono text-foreground">NEXT_PUBLIC_SUPABASE_ANON_KEY</span> from Project
-            Settings → API into <span className="font-mono text-foreground">.env.local</span>
-          </li>
-          <li>Restart the dev server</li>
+          <li>Restart the app</li>
         </ol>
       </CardContent>
     </Card>

@@ -108,7 +108,7 @@ export default function RecordPage() {
     <div>
       <PageHeader
         title="Verified digital record"
-        description="Generated after officer approval — stored in Supabase with a full audit trail."
+        description="Generated after officer approval — with a full audit trail."
         actions={
           <>
             <Button variant="outline" className="rounded-full" onClick={() => window.print()}>
