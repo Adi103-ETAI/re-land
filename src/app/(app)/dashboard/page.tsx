@@ -129,7 +129,7 @@ export default function DashboardPage() {
   return (
     <div>
       <PageHeader
-        title={`Welcome back, ${profile?.name || session?.user?.email?.split("@")[0] || "Officer"}`}
+        title={profile?.name ? `Welcome back, ${profile.name}` : "Welcome back"}
         description="Here's your land record digitization overview for today."
         actions={
           <Link href="/upload">
