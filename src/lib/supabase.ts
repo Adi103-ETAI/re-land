@@ -148,7 +148,38 @@ export async function getUserProfile(userIdOrEmail?: string): Promise<Profile | 
         ? await query.eq("id", userIdOrEmail).limit(1)
         : await query.eq("id", sessionUser.id).limit(1);
   if (error) return null;
-  return mapProfile(Array.isArray(data) ? data[0] : data);
+  const found = mapProfile(Array.isArray(data) ? data[0] : data);
+  if (found) return found;
+
+  // No profile row (e.g. signed up before the trigger existed, or Google
+  // OAuth) — create one from the auth metadata so the UI never falls back
+  // to a generic "Officer" label. Best effort: fail open with a local stub.
+  if (!userIdOrEmail || userIdOrEmail === sessionUser.id) {
+    const meta = (sessionUser.user_metadata ?? {}) as Record<string, unknown>;
+    const fallback: Profile = {
+      id: sessionUser.id,
+      email: sessionUser.email ?? "",
+      name:
+        (typeof meta.name === "string" && meta.name) ||
+        (typeof meta.full_name === "string" && meta.full_name) ||
+        (sessionUser.email ?? "").split("@")[0] ||
+        "Officer",
+      role: (typeof meta.role === "string" ? meta.role : "operator") as Profile["role"],
+    };
+    try {
+      const { error: insertError } = await sb.from("profiles").insert({
+        id: fallback.id,
+        email: fallback.email,
+        name: fallback.name,
+        role: fallback.role,
+      });
+      if (insertError) return fallback;
+      return fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return null;
 }
 
 /** Subscribe to auth state changes; returns an unsubscribe function. */
