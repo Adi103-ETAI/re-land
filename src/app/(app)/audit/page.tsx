@@ -18,6 +18,64 @@ import { EmptyState, SetupNotice } from "@/components/system/states";
 import { useRequireAuth } from "@/hooks/use-require-auth";
 import { listAuditLogs, type AuditLogRow } from "@/lib/db";
 
+const FIELD_LABELS: Record<string, string> = {
+  survey_no: "Survey number",
+  khata_no: "Khata number",
+  owner_name: "Owner",
+  owner: "Owner",
+  village: "Village",
+  tehsil: "Tehsil",
+  district: "District",
+  area_detected: "Area (document)",
+  area_reference: "Area (reference)",
+  classification: "Classification",
+  mutation_date: "Mutation date",
+  validation_status: "Validation",
+  verification_status: "Verification",
+  validation_score: "Validation score",
+  record_code: "Record",
+  notes: "Notes",
+};
+
+function prettyField(key: string): string {
+  if (FIELD_LABELS[key]) return FIELD_LABELS[key];
+  return key
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function prettyValue(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "—";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  const s = String(v);
+  // Title-case simple status words, keep the rest as-is (names, numbers)
+  if (/^(pending|accepted|rejected|review|safe|high_risk|corrected|escalated|completed|failed|uploaded|processing)$/i.test(s)) {
+    return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return s;
+}
+
+function prettyAction(action: string): string {
+  return action.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function ValuesList({ values, tone }: { values: Record<string, unknown>; tone: "red" | "green" }) {
+  const entries = Object.entries(values);
+  if (entries.length === 0) return null;
+  return (
+    <dl className="divide-y divide-dashed divide-border/70">
+      {entries.map(([k, v]) => (
+        <div key={k} className="flex items-baseline justify-between gap-3 py-1.5">
+          <dt className="text-muted-foreground">{prettyField(k)}</dt>
+          <dd className={`truncate font-medium ${tone === "red" ? "text-destructive" : "text-[var(--success)]"}`}>
+            {prettyValue(v)}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 const ACTION_META: Record<string, { icon: typeof FilePlus2; cls: string }> = {
   RECORD_CREATED: { icon: FilePlus2, cls: "bg-accent text-accent-foreground" },
   RECORD_AREA_CORRECTED: { icon: CheckCircle2, cls: "bg-accent text-accent-foreground" },
@@ -175,7 +233,7 @@ export default function AuditPage() {
                     </div>
                     <div className="flex-1 pb-6">
                       <div className="flex flex-wrap items-center gap-2.5">
-                        <span className="text-sm font-semibold">{log.action.replace(/_/g, " ")}</span>
+                        <span className="text-sm font-semibold">{prettyAction(log.action)}</span>
                         <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase text-muted-foreground">
                           {log.entity_type} · {log.entity_id ?? "—"}
                         </Badge>
@@ -184,24 +242,23 @@ export default function AuditPage() {
                         </span>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        User <span className="font-mono">{log.user_id ?? "—"}</span>
+                        User{" "}
+                        <span className="font-mono" title={log.user_id ?? ""}>
+                          {log.user_id ? `${log.user_id.slice(0, 8)}…` : "—"}
+                        </span>
                       </p>
                       {(hasPrev || hasNext) && (
                         <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">
                           {hasPrev && (
                             <div className="rounded-xl border border-destructive/20 bg-[var(--destructive-soft)]/60 p-3">
-                              <div className="mb-1 font-semibold text-destructive">Previous values</div>
-                              <pre className="overflow-x-auto font-mono text-destructive/80">
-                                {JSON.stringify(log.previous_values, null, 2)}
-                              </pre>
+                              <div className="mb-1 font-semibold text-destructive">Before</div>
+                              <ValuesList values={log.previous_values as Record<string, unknown>} tone="red" />
                             </div>
                           )}
                           {hasNext && (
                             <div className="rounded-xl border border-[var(--success)]/25 bg-[var(--success-soft)] p-3">
-                              <div className="mb-1 font-semibold text-[var(--success)]">New values</div>
-                              <pre className="overflow-x-auto font-mono text-[var(--success)]/90">
-                                {JSON.stringify(log.new_values, null, 2)}
-                              </pre>
+                              <div className="mb-1 font-semibold text-[var(--success)]">After</div>
+                              <ValuesList values={log.new_values as Record<string, unknown>} tone="green" />
                             </div>
                           )}
                         </div>
