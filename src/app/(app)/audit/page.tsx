@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState, SetupNotice } from "@/components/system/states";
 import { useRequireAuth } from "@/hooks/use-require-auth";
-import { listAuditLogs, type AuditLogRow } from "@/lib/db";
+import { auditActorName, listAuditLogs, type AuditLogRow } from "@/lib/db";
 
 const FIELD_LABELS: Record<string, string> = {
   survey_no: "Survey number",
@@ -242,10 +242,10 @@ export default function AuditPage() {
                         </span>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        User{" "}
-                        <span className="font-mono" title={log.user_id ?? ""}>
-                          {log.user_id ? `${log.user_id.slice(0, 8)}…` : "—"}
-                        </span>
+                        {auditActorName(log)}
+                        {log.user_name && log.user_email && (
+                          <span className="font-mono"> · {log.user_email}</span>
+                        )}
                       </p>
                       {(hasPrev || hasNext) && (
                         <div className="mt-3 grid gap-3 text-xs sm:grid-cols-2">

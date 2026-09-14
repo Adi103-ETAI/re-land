@@ -97,6 +97,9 @@ export interface ParcelRow {
 export interface AuditLogRow {
   id: string;
   user_id: string | null;
+  /** Resolved from profiles — null when the profile row is missing. */
+  user_name?: string | null;
+  user_email?: string | null;
   action: string;
   entity_type: string;
   entity_id: string | null;
@@ -352,13 +355,42 @@ export async function logAudit(entry: {
 }
 
 export async function listAuditLogs(limit = 100): Promise<AuditLogRow[]> {
-  const { data, error } = await sb()
+  const client = sb();
+  const { data, error } = await client
     .from("audit_logs")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error(`Could not load audit trail: ${error.message}`);
-  return (data ?? []) as AuditLogRow[];
+  const logs = (data ?? []) as AuditLogRow[];
+
+  // Resolve user ids → names via profiles (best effort; never fail the trail).
+  const ids = [...new Set(logs.map((l) => l.user_id).filter((id): id is string => !!id))];
+  if (ids.length > 0) {
+    try {
+      const { data: profiles } = await client
+        .from("profiles")
+        .select("id,name,email")
+        .in("id", ids);
+      const byId = new Map((profiles ?? []).map((p: any) => [p.id, p]));
+      for (const log of logs) {
+        const p = log.user_id ? byId.get(log.user_id) : null;
+        log.user_name = p?.name ?? null;
+        log.user_email = p?.email ?? null;
+      }
+    } catch {
+      // profiles unreadable — callers fall back to the short id.
+    }
+  }
+  return logs;
+}
+
+/** Display name for an audit actor: real name preferred, email next, short id last. */
+export function auditActorName(log: Pick<AuditLogRow, "user_name" | "user_email" | "user_id">): string {
+  if (log.user_name) return log.user_name;
+  if (log.user_email) return log.user_email;
+  if (log.user_id) return `${log.user_id.slice(0, 8)}…`;
+  return "—";
 }
 
 // ── Aggregates (dashboard + analytics) ───────────────────────
