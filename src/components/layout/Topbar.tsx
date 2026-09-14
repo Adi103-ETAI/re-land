@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, LogOut, Menu, UserRound } from "lucide-react";
+import { ChevronDown, Database, LayoutDashboard, LogOut, Menu, ScrollText } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,6 +20,14 @@ import { useCaseStore } from "@/store/case-store";
 import { getUserProfile, signOut, type Profile } from "@/lib/supabase";
 
 const LANGS = ["English", "मराठी", "हिंदी"];
+
+const ROLE_LABELS: Record<string, string> = {
+  operator: "Field Operator",
+  verifier: "Verifier",
+  senior: "Senior Officer",
+  auditor: "Auditor",
+  admin: "Administrator",
+};
 
 export default function Topbar() {
   const router = useRouter();
@@ -115,18 +124,43 @@ export default function Topbar() {
               <ChevronDown className="hidden h-3.5 w-3.5 text-muted-foreground lg:block" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56 rounded-xl">
-            <DropdownMenuLabel>
-              <div className="truncate text-sm font-semibold">{displayName}</div>
-              <div className="truncate text-xs font-normal text-muted-foreground">
-                {profile?.role ? `${profile.role.charAt(0).toUpperCase()}${profile.role.slice(1)}` : "Officer"}
-                {profile?.email ? ` · ${profile.email}` : ""}
+          <DropdownMenuContent align="end" className="w-64 rounded-2xl p-2">
+            <DropdownMenuLabel className="px-2 py-2">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback className="bg-primary text-sm font-bold text-primary-foreground">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold">{displayName}</div>
+                  <div className="truncate text-xs font-normal text-muted-foreground">
+                    {profile?.email || "Signed in"}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                <Badge className="rounded-md bg-accent px-2 py-0.5 text-[10px] font-bold text-accent-foreground hover:bg-accent">
+                  {(profile?.role && ROLE_LABELS[profile.role]) || "Officer"}
+                </Badge>
+                {profile?.district && (
+                  <Badge variant="outline" className="rounded-md px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                    {profile.district}
+                  </Badge>
+                )}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="rounded-lg" onClick={() => router.push("/audit")}>
-              <UserRound className="h-4 w-4" /> My activity
+            <DropdownMenuItem className="rounded-lg" onClick={() => router.push("/dashboard")}>
+              <LayoutDashboard className="h-4 w-4" /> Dashboard
             </DropdownMenuItem>
+            <DropdownMenuItem className="rounded-lg" onClick={() => router.push("/records")}>
+              <Database className="h-4 w-4" /> My records
+            </DropdownMenuItem>
+            <DropdownMenuItem className="rounded-lg" onClick={() => router.push("/audit")}>
+              <ScrollText className="h-4 w-4" /> My activity
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               className="rounded-lg text-destructive focus:text-destructive"
               onClick={handleSignOut}
