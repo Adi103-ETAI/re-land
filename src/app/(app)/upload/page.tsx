@@ -14,7 +14,7 @@ import { getSession } from "@/lib/supabase";
 
 const STEPS = [
   { title: "Document classification", desc: "AI identifies document type and language" },
-  { title: "OCR extraction", desc: "Text extraction using vision models + Tesseract fallback" },
+  { title: "Text extraction", desc: "Automatic text extraction from scans and photos" },
   { title: "Field recognition", desc: "Khasra number, owner name, area detected" },
   { title: "Validation", desc: "Business rules applied, risk scoring" },
   { title: "Review queue", desc: "Ready for officer verification" },
@@ -68,10 +68,10 @@ export default function UploadPage() {
     setUploading(true);
     setError("");
     reset();
-    setProgress("Storing file in Supabase…");
+    setProgress("Uploading file…");
 
     try {
-      // 1. File → Supabase Storage, metadata → documents table
+      // 1. File → secure storage, metadata → documents table
       const { path } = await uploadDocumentFile(file, currentSession.user.id);
       const doc = await createDocument({
         owner_id: currentSession.user.id,
@@ -92,7 +92,7 @@ export default function UploadPage() {
       });
 
       // 2. Hand the file to the extraction pipeline (best effort — the
-      //    record stays "processing" in Supabase if the worker is offline)
+      //    record stays "processing" if the worker is offline)
       setProgress("Sending to the extraction pipeline…");
       try {
         const result = await uploadFile(file, "auto");

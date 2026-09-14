@@ -112,7 +112,7 @@ export default function Validation() {
       });
       show(message);
     } catch (e: any) {
-      show(e?.message || "Could not save to Supabase");
+      show(e?.message || "Could not save changes");
     }
   };
 
@@ -245,7 +245,7 @@ export default function Validation() {
                     setCase({ ...currentCase, area: v, areaDb: v });
                     setAreaResolved(true);
                     setEditArea(false);
-                    await persist({ area_detected: v, area_reference: v }, `Area updated to ${v} Ha — saved to Supabase`, "RECORD_AREA_CORRECTED");
+                    await persist({ area_detected: v, area_reference: v }, `Area updated to ${v} Ha — saved`, "RECORD_AREA_CORRECTED");
                   }
                 }}
               >
@@ -265,7 +265,7 @@ export default function Validation() {
                   setAreaResolved(true);
                   await persist(
                     { area_detected: currentCase.areaDb },
-                    `Accepted reference area ${currentCase.areaDb} Ha — saved to Supabase`,
+                    `Accepted reference area ${currentCase.areaDb} Ha — saved`,
                     "RECORD_AREA_ACCEPTED"
                   );
                 }}
@@ -325,7 +325,7 @@ export default function Validation() {
                 setDupResolved(true);
                 await persist(
                   { dup_match_code: null, dup_similarity: null },
-                  `Marked as not a duplicate — saved to Supabase`,
+                  `Marked as not a duplicate — saved`,
                   "RECORD_DUPLICATE_DISMISSED"
                 );
               }}

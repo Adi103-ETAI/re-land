@@ -82,7 +82,7 @@ export default function AnalyticsPage() {
     <div>
       <PageHeader
         title="Analytics"
-        description="Insights computed live from your Supabase data."
+        description="Live insights from your digitized records."
         actions={
           <Link href="/upload">
             <Button className="rounded-full">Upload document</Button>
