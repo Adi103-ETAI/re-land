@@ -38,12 +38,14 @@ const msgs: Record<string, string> = {
 export default function Processing() {
   const router = useRouter();
   const { configured, ready } = useRequireAuth();
-  const { uploadedFile, jobId, setJobId, setCase, setFields, setRecordId, documentId } = useCaseStore();
+  const { uploadedFile, jobId, setCase, setFields, setRecordId, documentId } = useCaseStore();
   const [pct, setPct] = useState(4);
   const [msg, setMsg] = useState(msgs.queued);
   const [error, setError] = useState("");
   const [stepIdx, setStepIdx] = useState(0);
+  const [completed, setCompleted] = useState(false);
   const savedRef = useRef(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const id = jobId || (typeof window !== "undefined" ? sessionStorage.getItem("landlens_jobId") : null);
 
   useEffect(() => {
@@ -51,6 +53,32 @@ export default function Processing() {
     if (!id) {
       setError("No extraction job is running. Start by uploading a document.");
       return;
+    }
+
+    // Keep the job id available across reloads (store itself is in-memory only).
+    try {
+      sessionStorage.setItem("landlens_jobId", id);
+    } catch {
+      /* storage unavailable — polling still works for this mount */
+    }
+
+    const savedKey = `landlens_saved_${id}`;
+    const recordKey = `landlens_record_${id}`;
+
+    // Already finished in this session (store hydrated + persisted) → don't
+    // hit the API again, don't re-save, just bounce to the result.
+    // This is what stops OCR "restarting" on tab back & forth.
+    const st = useCaseStore.getState();
+    if (st.recordId && st.fields && st.currentCase) {
+      savedRef.current = true;
+      setPct(100);
+      setMsg(msgs.done);
+      setStepIdx(steps.length - 1);
+      setCompleted(true);
+      timerRef.current = setTimeout(() => router.push("/extraction"), 400);
+      return () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+      };
     }
 
     let cancelled = false;
@@ -79,12 +107,17 @@ export default function Processing() {
             dupSim: rec.dupSim ?? 0,
             dupMatch: rec.dupMatch ?? null,
             lang: rec.lang ?? "",
-            docLabel: rec.docLabel ?? uploadedFile?.name ?? "Scanned document",
+            docLabel: rec.docLabel ?? useCaseStore.getState().uploadedFile?.name ?? "Scanned document",
           });
           setFields(rec.fields ?? []);
 
-          // Persist the extraction result (once)
-          if (!savedRef.current) {
+          // Persist the extraction result exactly once per job — the ref guards
+          // StrictMode / re-renders within a mount, sessionStorage guards
+          // remounts (tab back & forth) and page reloads.
+          const alreadySaved =
+            savedRef.current ||
+            (typeof window !== "undefined" && sessionStorage.getItem(savedKey) === "1");
+          if (!alreadySaved) {
             savedRef.current = true;
             try {
               const session = await getSession();
@@ -113,6 +146,12 @@ export default function Processing() {
                 dup_match_code: rec.dupMatch ?? null,
               });
               setRecordId(saved.id);
+              try {
+                sessionStorage.setItem(savedKey, "1");
+                sessionStorage.setItem(recordKey, saved.id);
+              } catch {
+                /* non-fatal */
+              }
               if (documentId) await updateDocument(documentId, { status: "completed", processed_at: new Date().toISOString() });
               await logAudit({
                 userId: session.user?.id,
@@ -124,16 +163,30 @@ export default function Processing() {
             } catch (e: any) {
               if (!cancelled) setError(`Extraction succeeded but saving failed: ${e?.message || e}`);
             }
+          } else {
+            // Revisit after a reload: result already persisted — rehydrate the
+            // store (incl. recordId for the validation page) without inserting
+            // a duplicate row or audit entry.
+            savedRef.current = true;
+            try {
+              const storedRecordId = sessionStorage.getItem(recordKey);
+              if (storedRecordId && !useCaseStore.getState().recordId) {
+                setRecordId(storedRecordId);
+              }
+            } catch {
+              /* non-fatal */
+            }
           }
 
           setPct(100);
           setMsg(msgs.done);
-          setTimeout(() => !cancelled && router.push("/extraction"), 700);
+          setCompleted(true);
+          timerRef.current = setTimeout(() => !cancelled && router.push("/extraction"), 700);
         } else if (j.status === "failed") {
           setError(msgs.failed + " " + (j.error || ""));
           if (documentId) await updateDocument(documentId, { status: "failed", error: j.error || "pipeline failed" }).catch(() => {});
         } else {
-          setTimeout(poll, 800);
+          timerRef.current = setTimeout(poll, 800);
         }
       } catch {
         if (!cancelled) {
@@ -144,8 +197,9 @@ export default function Processing() {
     poll();
     return () => {
       cancelled = true;
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [ready, configured, id, documentId, router, setCase, setFields, setRecordId, uploadedFile?.name]);
+  }, [ready, configured, id, documentId, router, setCase, setFields, setRecordId]);
 
   const bgImg = uploadedFile?.isImage && uploadedFile.url ? `url(${uploadedFile.url})` : undefined;
 
@@ -170,7 +224,7 @@ export default function Processing() {
                   }
             }
           >
-            {!error && (
+            {!error && !completed && (
               <div className="animate-scan absolute left-0 right-0 h-[70px] bg-gradient-to-b from-transparent via-primary/35 to-transparent" />
             )}
           </div>
@@ -201,12 +255,23 @@ export default function Processing() {
               <>
                 <div className="flex items-end justify-between">
                   <div className="font-mono text-4xl font-bold">{Math.round(pct)}%</div>
-                  <Badge variant="outline" className="gap-1.5 rounded-full border-primary/40 text-primary">
-                    <Loader2 className="h-3 w-3 animate-spin" /> Processing
-                  </Badge>
+                  {completed ? (
+                    <Badge variant="outline" className="gap-1.5 rounded-full border-[var(--success)] text-[var(--success)]">
+                      <Check className="h-3 w-3" /> Completed
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="gap-1.5 rounded-full border-primary/40 text-primary">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Processing
+                    </Badge>
+                  )}
                 </div>
                 <Progress value={pct} className="mt-3 h-2.5" />
                 <p className="mt-3 text-sm text-muted-foreground">{msg}</p>
+                {completed && (
+                  <Button className="mt-4 rounded-full" onClick={() => router.push("/extraction")}>
+                    View extracted record
+                  </Button>
+                )}
 
                 <ul className="mt-5 max-h-[260px] divide-y divide-border overflow-y-auto">
                   {steps.map((s, i) => (

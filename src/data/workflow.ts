@@ -19,7 +19,6 @@ export const pageTitles: Record<string, string> = {
   verification: "Verification queue",
   record: "Digital records",
   gis: "GIS / land map",
-  analytics: "Analytics",
   audit: "Audit trail",
 };
 

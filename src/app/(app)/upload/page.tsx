@@ -68,6 +68,11 @@ export default function UploadPage() {
     setUploading(true);
     setError("");
     reset();
+    try {
+      sessionStorage.removeItem("landlens_jobId");
+    } catch {
+      /* non-fatal */
+    }
     setProgress("Uploading file…");
 
     try {
@@ -99,10 +104,26 @@ export default function UploadPage() {
         const id = result?.jobId ?? result?.job_id;
         if (id) {
           setJobId(id);
+          try {
+            sessionStorage.setItem("landlens_jobId", id);
+          } catch {
+            /* non-fatal */
+          }
           await updateDocument(doc.id, { job_id: id });
+        } else {
+          try {
+            sessionStorage.removeItem("landlens_jobId");
+          } catch {
+            /* non-fatal */
+          }
         }
       } catch {
         setJobId(null);
+        try {
+          sessionStorage.removeItem("landlens_jobId");
+        } catch {
+          /* non-fatal */
+        }
       }
 
       router.push("/processing");

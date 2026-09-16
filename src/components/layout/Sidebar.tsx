@@ -10,7 +10,6 @@ import {
   UserCheck,
   Database,
   MapPinned,
-  BarChart3,
   History,
   LogOut,
 } from "lucide-react";
@@ -27,7 +26,6 @@ export const workflowLinks = [
 
 export const insightLinks = [
   { href: "/gis", label: "GIS / land map", icon: MapPinned },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/audit", label: "Audit trail", icon: History },
 ];
 

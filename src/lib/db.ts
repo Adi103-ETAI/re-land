@@ -393,7 +393,7 @@ export function auditActorName(log: Pick<AuditLogRow, "user_name" | "user_email"
   return "—";
 }
 
-// ── Aggregates (dashboard + analytics) ───────────────────────
+// ── Aggregates (dashboard) ───────────────────────
 
 export interface DashboardStats {
   totalDocuments: number;
@@ -432,69 +432,5 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     completedRecords: verificationCounts["accepted"] ?? 0,
     validationCounts,
     verificationCounts,
-  };
-}
-
-export interface AnalyticsData {
-  totalDocuments: number;
-  totalRecords: number;
-  avgConfidence: number; // 0..100
-  successRate: number; // 0..100
-  pendingVerification: number;
-  highRiskCount: number;
-  validationDist: { status: string; count: number }[];
-  confidenceDist: { range: string; count: number }[];
-  recentDocuments: DocumentRow[];
-  pipeline: { stage: string; count: number }[];
-}
-
-export async function getAnalytics(): Promise<AnalyticsData> {
-  const client = sb();
-  const [docsRes, recsRes] = await Promise.all([
-    client.from("documents").select("*").order("created_at", { ascending: false }).limit(10),
-    client.from("records").select("id,validation_status,verification_status,confidence_score,created_at"),
-  ]);
-  if (docsRes.error) throw new Error(`Could not load analytics: ${docsRes.error.message}`);
-  if (recsRes.error) throw new Error(`Could not load analytics: ${recsRes.error.message}`);
-
-  const recs = (recsRes.data ?? []) as any[];
-  const withConf = recs.filter((r) => r.confidence_score != null);
-  const avgConfidence = withConf.length
-    ? Math.round((withConf.reduce((s, r) => s + Number(r.confidence_score), 0) / withConf.length) * 100)
-    : 0;
-
-  const validationCounts: Record<string, number> = {};
-  const verificationCounts: Record<string, number> = {};
-  for (const r of recs) {
-    validationCounts[r.validation_status] = (validationCounts[r.validation_status] ?? 0) + 1;
-    verificationCounts[r.verification_status] = (verificationCounts[r.verification_status] ?? 0) + 1;
-  }
-
-  const buckets: Record<string, number> = { "90-100%": 0, "80-90%": 0, "70-80%": 0, "Below 70%": 0 };
-  for (const r of withConf) {
-    const c = Number(r.confidence_score);
-    if (c >= 0.9) buckets["90-100%"]++;
-    else if (c >= 0.8) buckets["80-90%"]++;
-    else if (c >= 0.7) buckets["70-80%"]++;
-    else buckets["Below 70%"]++;
-  }
-
-  const total = recs.length || 1;
-  return {
-    totalDocuments: (docsRes.data ?? []).length === 10 ? 10 : (docsRes.data ?? []).length,
-    totalRecords: recs.length,
-    avgConfidence,
-    successRate: Math.round(((verificationCounts["accepted"] ?? 0) / total) * 100),
-    pendingVerification: verificationCounts["pending"] ?? 0,
-    highRiskCount: validationCounts["high_risk"] ?? 0,
-    validationDist: Object.entries(validationCounts).map(([status, count]) => ({ status, count })),
-    confidenceDist: Object.entries(buckets).map(([range, count]) => ({ range, count })),
-    recentDocuments: (docsRes.data ?? []) as DocumentRow[],
-    pipeline: [
-      { stage: "Uploaded", count: recs.length },
-      { stage: "Validated", count: recs.filter((r) => r.validation_status !== "pending").length },
-      { stage: "Accepted", count: verificationCounts["accepted"] ?? 0 },
-      { stage: "Rejected", count: verificationCounts["rejected"] ?? 0 },
-    ],
   };
 }
